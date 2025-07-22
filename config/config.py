@@ -102,6 +102,25 @@ DEEP_RESEARCH_CONFIG = {
     ]
 }
 
+# Question Agent Reasoning Model Configuration  
+# Using OpenAI o-series reasoning models for complex multi-source analysis
+QUESTION_AGENT_CONFIG = {
+    'reasoning_model': {
+        'production': 'o3',      # Advanced reasoning for production analysis
+        'development': 'o4-mini', # Cost-effective reasoning for dev/testing
+        'effort': 'medium',       # Balance between speed and reasoning quality
+        'max_output_tokens': 25000,  # Reserve space for reasoning + output
+        'use_reasoning': True,    # Enable reasoning tokens for complex analysis
+        'include_reasoning_summary': True  # Get reasoning summary for transparency
+    },
+    'fallback_model': 'gpt-4.1',  # Fallback if reasoning models unavailable
+    'use_web_search': True,       # Enable web search for data enrichment
+    'context_optimization': {
+        'max_context_length': 15000,  # Truncate context to fit reasoning space
+        'preserve_sections': ['general_research', 'deep_research', 'question_focus']
+    }
+}
+
 # Parallel execution settings for question agents (within a single project)
 PARALLEL_CONFIG = {
     'max_workers': 6,  # One per question

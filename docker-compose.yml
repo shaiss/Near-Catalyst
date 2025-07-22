@@ -1,0 +1,46 @@
+services:
+  near-catalyst:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: near-catalyst-framework
+    ports:
+      - "5001:5000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_PATH=/app/data/project_analyses_multi_agent.db
+    volumes:
+      # Mount data directory for database persistence
+      - ./data:/app/data
+      # Mount config for benchmark customization
+      - ./config:/app/config
+      # Mount .env file if it exists
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Analysis runner service (for running analysis separately from web server)
+  near-catalyst-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: near-catalyst-analysis
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_PATH=/app/data/project_analyses_multi_agent.db
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./.env:/app/.env:ro
+    command: ["python", "analyze_projects_multi_agent_v2.py", "--limit", "5"]
+    profiles: ["analysis"]  # Only run when explicitly requested
+    depends_on:
+      - near-catalyst
+
+volumes:
+  data: 

@@ -14,8 +14,7 @@
         <header class="glass-header">
             <div class="header-content">
                 <div class="logo-section">
-                    <i class="fas fa-handshake"></i>
-                    <h1>🚀 NEAR Catalyst Framework</h1>
+                    <h1>🚀 NEAR Activation Catalyst</h1>
                 </div>
                 <div class="header-stats">
                     <div class="stat-card glass">
@@ -82,7 +81,7 @@
             <!-- Projects List -->
             <section class="projects-section">
                 <div class="section-header">
-                    <h2>Hackathon Catalyst Discovery Results</h2>
+                    <h2>Catalyst Discovery Results</h2>
                     <div class="view-toggle">
                         <button id="card-view" class="btn-secondary active">
                             <i class="fas fa-th-large"></i> Cards
@@ -134,83 +133,90 @@
                     </button>
                 </div>
                 <div class="modal-body">
-                    <div class="project-overview">
-                        <div class="score-display">
-                            <div class="score-circle">
-                                <span id="modal-score">-</span>
-                                <small>/6</small>
+                    <!-- Consolidated Project Header -->
+                    <div class="project-header-consolidated">
+                        <div class="project-main-info">
+                            <div class="project-title-section">
+                                <h2 id="modal-project-name">Project Name</h2>
+                                <div class="project-tagline" id="modal-project-tagline">Project tagline will appear here</div>
                             </div>
-                            <div class="recommendation">
-                                <p id="modal-recommendation">-</p>
+                            
+                            <!-- Social Links - Moved to center for better space usage -->
+                            <div class="social-links-container-center" id="social-links-container" style="display: none;">
+                                <!-- Social icons will be populated here in 4x2 grid -->
+                            </div>
+                            
+                            <div class="project-meta-actions">
+                                <div class="score-display-inline">
+                                    <div class="score-circle-small">
+                                        <span id="modal-score">-</span>
+                                        <small>/6</small>
+                                    </div>
+                                </div>
+                                <div class="project-actions">
+                                    <div class="dapp-link-box" id="dapp-link-container" style="display: none;">
+                                        <a href="#" id="dapp-link" target="_blank" rel="noopener" title="Visit live dApp">
+                                            <i class="fas fa-external-link-alt"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Consolidated Project Details Box -->
+                        <div class="project-details-consolidated">
+                            <div class="project-details-content" id="consolidated-project-details">
+                                <!-- Project details will be populated here -->
                             </div>
                         </div>
                     </div>
 
-                    <!-- Questions Overview - Now above tabs to persist -->
-                    <div class="questions-overview-persistent">
-                        <h3>Partnership Assessment Overview</h3>
-                        <div class="questions-grid" id="questions-grid">
-                            <!-- Quick overview cards will be populated here -->
-                        </div>
-                    </div>
-
-                    <!-- Tab Navigation -->
+                    <!-- Tab Navigation - Decision Recommendation First -->
                     <div class="tab-navigation">
-                        <button class="tab-btn active" data-tab="project-details">
-                            <i class="fas fa-info-circle"></i>
-                            Project Details
+                        <button class="tab-btn active" data-tab="decision">
+                            <i class="fas fa-thumbs-up"></i>
+                            Decision Recommendation
                         </button>
                         <button class="tab-btn" data-tab="questions">
-                            <i class="fas fa-list-check"></i>
-                            Question Analysis
-                        </button>
-                        <button class="tab-btn" data-tab="research">
-                            <i class="fas fa-search"></i>
-                            Research Summary
+                            <i class="fas fa-handshake"></i>
+                            Partnership Evaluation
                         </button>
                         <button class="tab-btn" data-tab="deep-research">
                             <i class="fas fa-microscope"></i>
                             Deep Research
                         </button>
-                        <button class="tab-btn" data-tab="analysis">
-                            <i class="fas fa-chart-line"></i>
-                            Final Analysis
-                        </button>
                     </div>
 
                     <!-- Tab Content -->
                     <div class="tab-content">
-                        <!-- Project Details Tab (NEW HOME TAB) -->
-                        <div id="project-details-tab" class="tab-pane active">
-                            <div class="project-details-content">
-                                <h3>Project Information</h3>
-                                <div id="project-details-data" class="content-section">
-                                    <!-- Project details from NEAR catalog will be populated here -->
+                        <!-- Decision Recommendation Tab (Now First) -->
+                        <div id="decision-tab" class="tab-pane active">
+                            <div class="decision-content">
+                                <!-- Collaboration Assessment Overview (Renamed) -->
+                                <div class="partnership-assessment-detailed">
+                                    <h3>Collaboration Assessment Overview</h3>
+                                    <div class="questions-grid-detailed" id="questions-grid-decision">
+                                        <!-- Detailed question cards will be populated here -->
+                                    </div>
+                                </div>
+                                
+                                <!-- Decision Analysis -->
+                                <div id="decision-analysis" class="decision-analysis-section">
+                                    <!-- Decision recommendation content will be populated here -->
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Questions Tab -->
+                        <!-- Partnership Evaluation Tab (Questions Details) -->
                         <div id="questions-tab" class="tab-pane">
                             <div class="questions-detailed">
-                                <h3>Detailed Analysis</h3>
+                                <h3>Detailed Partnership Evaluation</h3>
                                 <div id="questions-breakdown" class="questions-accordion">
                                     <!-- Detailed question breakdown will be populated here -->
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Research Tab -->
-                        <div id="research-tab" class="tab-pane">
-                            <div class="research-content">
-                                <h3>Research Summary</h3>
-                                <div id="research-summary" class="content-section">
-                                    <!-- Research summary will be populated here -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Deep Research Tab -->
+                        <!-- Deep Research Tab (Cost Removed) -->
                         <div id="deep-research-tab" class="tab-pane">
                             <div class="deep-research-content">
                                 <div class="research-header">
@@ -218,15 +224,11 @@
                                     <div class="research-metrics">
                                         <div class="metric-badge" id="deep-research-time">
                                             <i class="fas fa-clock"></i>
-                                            <span>-- min</span>
+                                            <span>-- minutes</span>
                                         </div>
                                         <div class="metric-badge" id="deep-research-tools">
                                             <i class="fas fa-cogs"></i>
                                             <span>-- tools</span>
-                                        </div>
-                                        <div class="metric-badge" id="deep-research-cost">
-                                            <i class="fas fa-dollar-sign"></i>
-                                            <span>$--</span>
                                         </div>
                                     </div>
                                 </div>
@@ -237,16 +239,6 @@
                                     <div id="deep-research-sources" class="sources-section">
                                         <!-- Deep research sources populated by JS -->
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Analysis Tab -->
-                        <div id="analysis-tab" class="tab-pane">
-                            <div class="analysis-content">
-                                <h3>Final Analysis</h3>
-                                <div id="final-analysis" class="content-section">
-                                    <!-- Final analysis will be populated here -->
                                 </div>
                             </div>
                         </div>

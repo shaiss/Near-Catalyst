@@ -107,6 +107,27 @@ class DatabaseManager:
             created_at TEXT,
             updated_at TEXT
         )''')
+
+        # Add API usage tracking table for cost and token monitoring
+        cursor.execute('''CREATE TABLE IF NOT EXISTS api_usage_tracking (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,           -- Groups calls by analysis session
+            project_name TEXT NOT NULL,         -- Which project this call was for
+            agent_type TEXT NOT NULL,           -- Which agent made the call (research, question, summary, etc.)
+            operation_type TEXT NOT NULL,       -- Type of operation (research, analysis, etc.)
+            model_name TEXT NOT NULL,           -- Model used (gpt-4.1, o3, o4-mini, etc.)
+            prompt_tokens INTEGER NOT NULL,     -- Input tokens used
+            completion_tokens INTEGER NOT NULL, -- Output tokens generated
+            reasoning_tokens INTEGER DEFAULT 0, -- Reasoning tokens (for o-series models)
+            total_tokens INTEGER NOT NULL,      -- Total tokens (prompt + completion + reasoning)
+            estimated_cost REAL DEFAULT 0.0,   -- Calculated cost for this call
+            response_time REAL DEFAULT 0.0,    -- Time taken for API call in seconds
+            success BOOLEAN NOT NULL,           -- Whether the call succeeded
+            error_message TEXT,                 -- Error details if failed
+            created_at TEXT NOT NULL,           -- Timestamp of API call
+            request_details TEXT,               -- JSON of request parameters (optional debug info)
+            response_details TEXT               -- JSON of response metadata (optional debug info)
+        )''')
         
         # Create indexes for better query performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_project_name ON project_research(project_name)')
@@ -115,6 +136,9 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_deep_research_project ON deep_research_data(project_name)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_catalog_slug ON project_catalog(slug)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_catalog_project ON project_catalog(project_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_session ON api_usage_tracking(session_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_project ON api_usage_tracking(project_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_agent ON api_usage_tracking(agent_type)')
         
         conn.commit()
         return conn, cursor
@@ -670,4 +694,188 @@ class DatabaseManager:
             return projects
             
         finally:
-            conn.close() 
+            conn.close()
+
+    def store_api_usage(self, session_id, project_name, agent_type, operation_type, 
+                       model_name, prompt_tokens, completion_tokens, reasoning_tokens,
+                       total_tokens, estimated_cost, response_time, success, 
+                       error_message=None, request_details=None, response_details=None):
+        """
+        Store API usage data for a single request.
+        
+        Args:
+            session_id (str): Unique session identifier for grouping calls
+            project_name (str): Name of the project being analyzed
+            agent_type (str): Type of agent (research_agent, question_agent, etc.)
+            operation_type (str): Type of operation (research, analysis, etc.)
+            model_name (str): OpenAI model used
+            prompt_tokens (int): Input tokens
+            completion_tokens (int): Output tokens
+            reasoning_tokens (int): Reasoning tokens (for o-series models)
+            total_tokens (int): Total tokens used
+            estimated_cost (float): Calculated cost
+            response_time (float): Time taken in seconds
+            success (bool): Whether the call succeeded
+            error_message (str, optional): Error message if failed
+            request_details (dict, optional): Request parameters for debugging
+            response_details (dict, optional): Response metadata for debugging
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            now = datetime.now().isoformat()
+            
+            cursor.execute('''INSERT INTO api_usage_tracking 
+                             (session_id, project_name, agent_type, operation_type, model_name,
+                              prompt_tokens, completion_tokens, reasoning_tokens, total_tokens,
+                              estimated_cost, response_time, success, error_message,
+                              created_at, request_details, response_details)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (session_id, project_name, agent_type, operation_type, model_name,
+                           prompt_tokens, completion_tokens, reasoning_tokens, total_tokens,
+                           estimated_cost, response_time, success, error_message, now,
+                           json.dumps(request_details) if request_details else None,
+                           json.dumps(response_details) if response_details else None))
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            print(f"    ⚠️ Failed to store API usage: {e}")
+            if 'conn' in locals():
+                conn.close()
+
+    def get_session_usage_summary(self, session_id):
+        """
+        Get comprehensive usage summary for a specific session.
+        
+        Args:
+            session_id (str): Session ID to analyze
+            
+        Returns:
+            dict: Usage summary with total costs, tokens, and breakdown by agent/model
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get overall session summary
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_calls,
+                    SUM(prompt_tokens) as total_prompt_tokens,
+                    SUM(completion_tokens) as total_completion_tokens,
+                    SUM(reasoning_tokens) as total_reasoning_tokens,
+                    SUM(total_tokens) as total_tokens,
+                    SUM(estimated_cost) as total_cost,
+                    AVG(response_time) as avg_response_time,
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_calls,
+                    MIN(created_at) as session_start,
+                    MAX(created_at) as session_end
+                FROM api_usage_tracking 
+                WHERE session_id = ?
+            ''', (session_id,))
+            
+            summary_row = cursor.fetchone()
+            
+            # Get breakdown by agent type
+            cursor.execute('''
+                SELECT 
+                    agent_type,
+                    COUNT(*) as calls,
+                    SUM(total_tokens) as tokens,
+                    SUM(estimated_cost) as cost
+                FROM api_usage_tracking 
+                WHERE session_id = ?
+                GROUP BY agent_type
+                ORDER BY cost DESC
+            ''', (session_id,))
+            
+            agent_breakdown = cursor.fetchall()
+            
+            # Get breakdown by model
+            cursor.execute('''
+                SELECT 
+                    model_name,
+                    COUNT(*) as calls,
+                    SUM(total_tokens) as tokens,
+                    SUM(estimated_cost) as cost
+                FROM api_usage_tracking 
+                WHERE session_id = ?
+                GROUP BY model_name
+                ORDER BY cost DESC
+            ''', (session_id,))
+            
+            model_breakdown = cursor.fetchall()
+            
+            conn.close()
+            
+            return {
+                'session_id': session_id,
+                'total_calls': summary_row[0] or 0,
+                'total_prompt_tokens': summary_row[1] or 0,
+                'total_completion_tokens': summary_row[2] or 0,
+                'total_reasoning_tokens': summary_row[3] or 0,
+                'total_tokens': summary_row[4] or 0,
+                'total_cost': summary_row[5] or 0.0,
+                'avg_response_time': summary_row[6] or 0.0,
+                'successful_calls': summary_row[7] or 0,
+                'session_start': summary_row[8],
+                'session_end': summary_row[9],
+                'agent_breakdown': [
+                    {'agent_type': row[0], 'calls': row[1], 'tokens': row[2], 'cost': row[3]}
+                    for row in agent_breakdown
+                ],
+                'model_breakdown': [
+                    {'model_name': row[0], 'calls': row[1], 'tokens': row[2], 'cost': row[3]}
+                    for row in model_breakdown
+                ]
+            }
+            
+        except Exception as e:
+            print(f"    ⚠️ Failed to get session usage summary: {e}")
+            return {}
+
+    def get_project_usage_summary(self, project_name):
+        """
+        Get usage summary for a specific project (all sessions).
+        
+        Args:
+            project_name (str): Name of the project
+            
+        Returns:
+            dict: Usage summary for the project
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT 
+                    COUNT(DISTINCT session_id) as total_sessions,
+                    COUNT(*) as total_calls,
+                    SUM(total_tokens) as total_tokens,
+                    SUM(estimated_cost) as total_cost,
+                    SUM(response_time) as total_time,
+                    MAX(created_at) as last_analysis
+                FROM api_usage_tracking 
+                WHERE project_name = ?
+            ''', (project_name,))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            return {
+                'project_name': project_name,
+                'total_sessions': row[0] or 0,
+                'total_calls': row[1] or 0,
+                'total_tokens': row[2] or 0,
+                'total_cost': row[3] or 0.0,
+                'total_time': row[4] or 0.0,
+                'last_analysis': row[5]
+            }
+            
+        except Exception as e:
+            print(f"    ⚠️ Failed to get project usage summary: {e}")
+            return {}

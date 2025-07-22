@@ -330,105 +330,57 @@ class PartnershipDashboard {
         const modal = document.getElementById('project-modal');
         const score = project.total_score || 0;
         
-        // Update modal content
-        document.getElementById('modal-title').textContent = project.project_name;
+        // Update modal title (in header) - just show "Project Details" instead of project name
+        document.getElementById('modal-title').textContent = 'Project Details';
+        
+        // Update consolidated project header
+        document.getElementById('modal-project-name').textContent = project.project_name;
         document.getElementById('modal-score').textContent = score;
-        document.getElementById('modal-recommendation').textContent = 
-            project.recommendation || 'No recommendation available';
-
+        
         // Remove any existing research quality dashboard to prevent duplication
         const existingDashboard = document.querySelector('.research-quality-dashboard');
         if (existingDashboard) {
             existingDashboard.remove();
         }
 
-        // Render questions overview grid (now persistent above tabs)
-        this.renderQuestionsOverview(details?.question_analyses || []);
+        // Render consolidated project details and social links
+        this.renderConsolidatedProjectDetails(project, details);
         
-        // Render detailed questions accordion
+        // Render partnership assessment in decision tab
+        this.renderPartnershipAssessmentDetailed(details?.question_analyses || []);
+        
+        // Render detailed questions accordion (for partnership evaluation tab)
         this.renderQuestionsAccordion(details?.question_analyses || []);
 
-        // Render research summary
-        document.getElementById('research-summary').innerHTML = 
-            this.renderStructuredContent(details?.general_research, 'Research data not available');
-
-        // Render final analysis
-        document.getElementById('final-analysis').innerHTML = 
-            this.renderStructuredContent(project.final_summary, 'Final analysis not available');
-
-        // Render project details from NEAR catalog
-        this.renderProjectDetails(project, details);
-
-        // Render research quality dashboard with real data
-        if (details) {
-            const researchQuality = this.calculateOverallQuality(details);
-            document.querySelector('.project-overview').insertAdjacentHTML('afterend', `
-                <div class="research-quality-dashboard">
-                    <h4><i class="fas fa-chart-bar"></i> Research Quality Overview</h4>
-                    <div class="quality-grid">
-                        <div class="quality-card">
-                            <div class="quality-value">${researchQuality.totalSources}</div>
-                            <div class="quality-label">Total Sources</div>
-                            <div class="quality-bar">
-                                <div class="quality-fill" style="width: ${Math.min(100, researchQuality.totalSources * 10)}%"></div>
-                            </div>
-                        </div>
-                        <div class="quality-card">
-                            <div class="quality-value">${researchQuality.averageConfidence}</div>
-                            <div class="quality-label">Avg Confidence</div>
-                            <div class="quality-bar">
-                                <div class="quality-fill confidence-${researchQuality.confidenceClass}" style="width: ${researchQuality.confidencePercent}%"></div>
-                            </div>
-                        </div>
-                        <div class="quality-card">
-                            <div class="quality-value">${researchQuality.researchTime}</div>
-                            <div class="quality-label">Research Time</div>
-                            <div class="quality-bar">
-                                <div class="quality-fill" style="width: ${Math.min(100, (parseFloat(researchQuality.researchTime) || 0) * 10)}%"></div>
-                            </div>
-                        </div>
-                        <div class="quality-card">
-                            <div class="quality-value">$${researchQuality.totalCost}</div>
-                            <div class="quality-label">Analysis Cost</div>
-                            <div class="quality-bar">
-                                <div class="quality-fill cost" style="width: ${Math.min(100, (parseFloat(researchQuality.totalCost) || 0) * 20)}%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `);
-        }
+        // Render enhanced decision recommendation
+        document.getElementById('decision-analysis').innerHTML = 
+            this.renderDecisionRecommendation(project, details);
 
         // Render deep research if available  
         if (details?.deep_research) {
-            this.renderDeepResearch(details.deep_research);
+            this.renderDeepResearch(details.deep_research, details);
         } else {
-            this.renderDeepResearchUnavailable();
+            this.renderDeepResearchUnavailable(details);
         }
 
-        // Reset to project details tab (new home tab)
-        this.switchTab('project-details');
+        // Reset to decision recommendation tab (now default first tab)
+        this.switchTab('decision');
 
         // Show modal
         modal.classList.add('active');
         document.body.style.overflow = 'hidden';
     }
 
-    async renderProjectDetails(project, details) {
-        const detailsElement = document.getElementById('project-details-data');
-        
+    async renderConsolidatedProjectDetails(project, details) {
         // Check if we have cached catalog data from backend
         const catalogData = details?.catalog_data;
+        let projectData = null;
         
         if (catalogData && catalogData.cached) {
             console.log('✓ Using cached NEAR catalog data from backend');
-            // Use cached data from backend
-            let detailsHtml = this.formatProjectCatalogData(catalogData.full_data || catalogData, project, details);
-            detailsElement.innerHTML = detailsHtml;
+            projectData = catalogData.full_data || catalogData;
         } else {
             console.log('⚠️ No cached catalog data, attempting direct API call...');
-            // Show loading state
-            detailsElement.innerHTML = '<div class="loading-details"><i class="fas fa-spinner fa-spin"></i> Loading project details...</div>';
             
             try {
                 // Fallback: Fetch project details from NEAR catalog directly
@@ -441,210 +393,196 @@ class PartnershipDashboard {
                     throw new Error(`NEAR Catalog API responded with ${response.status}`);
                 }
                 
-                const fallbackCatalogData = await response.json();
-                console.log('📊 Fallback NEAR Catalog Data:', fallbackCatalogData);
-                
-                // Render the project details
-                let detailsHtml = this.formatProjectCatalogData(fallbackCatalogData, project, details);
-                detailsElement.innerHTML = detailsHtml;
+                projectData = await response.json();
+                console.log('📊 Fallback NEAR Catalog Data:', projectData);
                 
             } catch (error) {
                 console.warn('⚠️ Could not fetch NEAR catalog data:', error);
-                
-                // Final fallback to basic project information
-                let fallbackHtml = this.formatBasicProjectData(project, details);
-                detailsElement.innerHTML = fallbackHtml;
+                projectData = null;
             }
         }
+        
+        // Update tagline
+        const profile = projectData?.profile || {};
+        const taglineElement = document.getElementById('modal-project-tagline');
+        if (profile.tagline) {
+            taglineElement.textContent = profile.tagline;
+            taglineElement.style.display = 'block';
+        } else {
+            taglineElement.textContent = project.recommendation || 'No tagline available';
+            taglineElement.style.display = 'block';
+        }
+        
+        // Update dApp link if available
+        const dappLinkContainer = document.getElementById('dapp-link-container');
+        const dappLink = document.getElementById('dapp-link');
+        // Hide dApp link box since we have globe icon in social links
+        dappLinkContainer.style.display = 'none';
+        
+        // Populate consolidated project details
+        const consolidatedDetails = document.getElementById('consolidated-project-details');
+        let detailsHtml = this.formatConsolidatedProjectData(projectData, project, details);
+        consolidatedDetails.innerHTML = detailsHtml;
+        
+        // Populate social links
+        this.renderSocialLinks(profile);
     }
 
-    formatProjectCatalogData(catalogData, project, details) {
-        let html = '<div class="project-meta-grid">';
+    formatConsolidatedProjectData(projectData, project, details) {
+        let html = '<div class="project-details-grid-consolidated">';
         
-        // Basic project metadata
-        if (catalogData.name || project.project_name) {
+        const profile = projectData?.profile || {};
+        const catalogInfo = projectData || {};
+        
+        // Phase/Stage
+        if (profile.phase) {
             html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Project Name</div>
-                    <div class="project-meta-value">${catalogData.name || project.project_name}</div>
+                <div class="project-detail-item-consolidated">
+                    <div class="project-detail-label">Phase</div>
+                    <div class="project-detail-value">${profile.phase}</div>
+                </div>
+            `;
+        } else if (catalogInfo.stage) {
+            html += `
+                <div class="project-detail-item-consolidated">
+                    <div class="project-detail-label">Stage</div>
+                    <div class="project-detail-value">${catalogInfo.stage}</div>
                 </div>
             `;
         }
         
-        if (catalogData.category) {
+        // Category
+        if (catalogInfo.category) {
             html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Category</div>
-                    <div class="project-meta-value">${catalogData.category}</div>
+                <div class="project-detail-item-consolidated">
+                    <div class="project-detail-label">Category</div>
+                    <div class="project-detail-value">${catalogInfo.category}</div>
                 </div>
             `;
         }
         
-        if (catalogData.stage) {
+        // Founded/Created
+        if (catalogInfo.founded) {
             html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Development Stage</div>
-                    <div class="project-meta-value">${catalogData.stage}</div>
+                <div class="project-detail-item-consolidated">
+                    <div class="project-detail-label">Founded</div>
+                    <div class="project-detail-value">${catalogInfo.founded}</div>
                 </div>
             `;
         }
         
-        if (catalogData.founded) {
+        // Team Size
+        if (catalogInfo.team_size) {
             html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Founded</div>
-                    <div class="project-meta-value">${catalogData.founded}</div>
+                <div class="project-detail-item-consolidated">
+                    <div class="project-detail-label">Team Size</div>
+                    <div class="project-detail-value">${catalogInfo.team_size}</div>
                 </div>
             `;
         }
         
-        if (catalogData.team_size) {
+        // Location
+        if (catalogInfo.location) {
             html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Team Size</div>
-                    <div class="project-meta-value">${catalogData.team_size}</div>
+                <div class="project-detail-item-consolidated">
+                    <div class="project-detail-label">Location</div>
+                    <div class="project-detail-value">${catalogInfo.location}</div>
                 </div>
             `;
         }
         
-        if (catalogData.location) {
-            html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Location</div>
-                    <div class="project-meta-value">${catalogData.location}</div>
-                </div>
-            `;
-        }
-        
-        html += '</div>';
-        
-        // Project description
-        if (catalogData.description) {
-            html += `
-                <div class="project-description">
-                    <strong>Description:</strong><br>
-                    ${this.formatText(catalogData.description)}
-                </div>
-            `;
-        }
-        
-        // Tags
-        if (catalogData.tags && catalogData.tags.length > 0) {
-            html += '<div class="project-tags">';
-            catalogData.tags.forEach(tag => {
-                html += `<span class="project-tag">${tag}</span>`;
-            });
-            html += '</div>';
-        }
-        
-        // Links
-        if (catalogData.website || catalogData.github || catalogData.twitter) {
-            html += '<div class="project-links">';
-            
-            if (catalogData.website) {
-                html += `<a href="${catalogData.website}" target="_blank" class="project-link">
-                    <i class="fas fa-globe"></i> Website
-                </a>`;
-            }
-            
-            if (catalogData.github) {
-                html += `<a href="${catalogData.github}" target="_blank" class="project-link">
-                    <i class="fab fa-github"></i> GitHub
-                </a>`;
-            }
-            
-            if (catalogData.twitter) {
-                html += `<a href="${catalogData.twitter}" target="_blank" class="project-link">
-                    <i class="fab fa-twitter"></i> Twitter
-                </a>`;
-            }
-            
-            html += '</div>';
-        }
-        
-        // Additional technical details
-        if (catalogData.tech_stack || catalogData.blockchain_networks) {
-            html += '<div class="project-meta-grid">';
-            
-            if (catalogData.tech_stack) {
-                html += `
-                    <div class="project-meta-item">
-                        <div class="project-meta-label">Tech Stack</div>
-                        <div class="project-meta-value">${catalogData.tech_stack}</div>
-                    </div>
-                `;
-            }
-            
-            if (catalogData.blockchain_networks) {
-                html += `
-                    <div class="project-meta-item">
-                        <div class="project-meta-label">Blockchain Networks</div>
-                        <div class="project-meta-value">${catalogData.blockchain_networks}</div>
-                    </div>
-                `;
-            }
-            
-            html += '</div>';
-        }
-        
-        return html;
-    }
-
-    formatBasicProjectData(project, details) {
-        let html = '<div class="project-meta-grid">';
-        
+        // Partnership Score
         html += `
-            <div class="project-meta-item">
-                <div class="project-meta-label">Project Name</div>
-                <div class="project-meta-value">${project.project_name}</div>
+            <div class="project-detail-item-consolidated">
+                <div class="project-detail-label">Partnership Score</div>
+                <div class="project-detail-value">${project.total_score || 0}/6</div>
             </div>
         `;
         
-        if (project.slug) {
-            html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Slug</div>
-                    <div class="project-meta-value">${project.slug}</div>
-                </div>
-            `;
-        }
-        
-        html += `
-            <div class="project-meta-item">
-                <div class="project-meta-label">Partnership Score</div>
-                <div class="project-meta-value">${project.total_score || 0}/6</div>
-            </div>
-        `;
-        
+        // Analysis Date
         if (project.created_at) {
             html += `
-                <div class="project-meta-item">
-                    <div class="project-meta-label">Analysis Date</div>
-                    <div class="project-meta-value">${this.formatDate(project.created_at)}</div>
+                <div class="project-detail-item-consolidated">
+                    <div class="project-detail-label">Analysis Date</div>
+                    <div class="project-detail-value">${this.formatDate(project.created_at)}</div>
                 </div>
             `;
         }
         
         html += '</div>';
         
-        if (project.recommendation) {
+        // Add description if available
+        if (catalogInfo.description) {
             html += `
-                <div class="project-description">
-                    <strong>Partnership Recommendation:</strong><br>
-                    ${this.formatText(project.recommendation)}
+                <div class="project-description-consolidated" style="margin-top: 16px; padding: 16px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; font-size: 0.85rem; line-height: 1.5; color: rgba(255, 255, 255, 0.9);">
+                    ${this.formatText(catalogInfo.description.substring(0, 300))}${catalogInfo.description.length > 300 ? '...' : ''}
                 </div>
             `;
         }
         
-        html += `
-            <div class="no-data" style="margin-top: 20px;">
-                <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
-                Could not fetch additional project details from NEAR Catalog. 
-                Please check the project slug or try again later.
-            </div>
-        `;
-        
         return html;
+    }
+
+    renderSocialLinks(profile) {
+        const socialContainer = document.getElementById('social-links-container');
+        
+        if (!socialContainer) {
+            console.warn('Social links container not found');
+            return;
+        }
+
+        // Clear existing content
+        socialContainer.innerHTML = '';
+        
+        let socialLinksHtml = '';
+        
+        // Map of platforms to their specific icons
+        const socialIconMap = {
+            'discord': 'fab fa-discord',
+            'github': 'fab fa-github', 
+            'twitter': 'fab fa-twitter',
+            'telegram': 'fab fa-telegram',
+            'medium': 'fab fa-medium',
+            'linkedin': 'fab fa-linkedin',
+            'youtube': 'fab fa-youtube',
+            'facebook': 'fab fa-facebook',
+            'instagram': 'fab fa-instagram',
+            'reddit': 'fab fa-reddit',
+            'website': 'fas fa-globe',
+            'blog': 'fas fa-blog',
+            'docs': 'fas fa-book'
+        };
+
+        // From enhanced catalog data (profile.linktree)
+        if (profile.linktree) {
+            Object.entries(profile.linktree).forEach(([platform, url]) => {
+                if (url && url.trim()) {
+                    const iconClass = socialIconMap[platform.toLowerCase()] || 'fas fa-link';
+                    socialLinksHtml += `
+                        <a href="${url}" target="_blank" rel="noopener" class="social-icon ${platform.toLowerCase()}" title="${platform}">
+                            <i class="${iconClass}"></i>
+                        </a>
+                    `;
+                }
+            });
+        }
+        
+        // Add dApp link as globe icon if available
+        if (profile.dapp) {
+            socialLinksHtml += `
+                <a href="${profile.dapp}" target="_blank" rel="noopener" class="social-icon dapp" title="dApp">
+                    <i class="fas fa-globe"></i>
+                </a>
+            `;
+        }
+
+        // Show container and populate with grid items
+        if (socialLinksHtml) {
+            socialContainer.innerHTML = socialLinksHtml;
+            socialContainer.style.display = 'grid';
+        } else {
+            socialContainer.style.display = 'none';
+        }
     }
 
     renderQuestionsOverview(questionAnalyses) {
@@ -802,13 +740,14 @@ class PartnershipDashboard {
     }
 
     getQuestionTitle(questionId) {
+        // CORRECTED: These must align with the 6 diagnostic questions from config/config.py
         const titles = {
             1: 'Gap-Filler?',
-            2: 'New Proof-Points?',
-            3: 'One-Sentence Story?',
-            4: 'Developer-Friendly?',
-            5: 'Aligned Incentives?',
-            6: 'Ecosystem Fit?'
+            2: 'New Proof-Points?', 
+            3: 'Clear Story?',
+            4: 'Shared Audience, Different Function?',
+            5: 'Low-Friction Integration?',
+            6: 'Hands-On Support?'
         };
         return titles[questionId] || `Question ${questionId}`;
     }
@@ -944,6 +883,214 @@ class PartnershipDashboard {
         return formatted;
     }
 
+    // ===== ENHANCED DECISION RECOMMENDATION SYSTEM =====
+    
+    renderDecisionRecommendation(project, details) {
+        if (!project.final_summary) {
+            return '<div class="no-data">Decision recommendation not available</div>';
+        }
+
+        return `
+            <!-- 1. DECISION HEADER (Score Removed) -->
+            <div class="decision-header-clean">
+                <div class="recommendation-text-clean">
+                    <h4>${project.recommendation}</h4>
+                    <p class="confidence">${this.getOverallConfidence(details?.question_analyses)}</p>
+                </div>
+            </div>
+
+            <!-- 2. KEY INSIGHTS -->
+            <div class="decision-insights">
+                <div class="insight-card strengths">
+                    <h6><i class="fas fa-thumbs-up"></i> Key Strengths</h6>
+                    ${this.extractStrengths(project.final_summary)}
+                </div>
+                <div class="insight-card risks">
+                    <h6><i class="fas fa-exclamation-triangle"></i> Key Risks</h6>
+                    ${this.extractRisks(project.final_summary)}
+                </div>
+            </div>
+
+            <!-- 3. ACTION PLAN -->
+            <div class="action-plan">
+                <h5><i class="fas fa-tasks"></i> Recommended Actions</h5>
+                ${this.extractNextSteps(project.final_summary)}
+            </div>
+
+            <!-- 4. FULL ANALYSIS (Collapsible) -->
+            <details class="full-analysis">
+                <summary><i class="fas fa-file-alt"></i> View Complete Analysis Report</summary>
+                <div class="analysis-content">
+                    ${this.formatText(project.final_summary.full_text || 'Full analysis not available')}
+                </div>
+            </details>
+        `;
+    }
+
+    getScoreClass(score) {
+        if (score >= 4) return 'score-high';
+        if (score >= 1) return 'score-mid';
+        return 'score-low';
+    }
+
+    getOverallConfidence(questionAnalyses) {
+        if (!questionAnalyses || questionAnalyses.length === 0) return 'Confidence not available';
+        
+        const confidenceCounts = { High: 0, Medium: 0, Low: 0 };
+        questionAnalyses.forEach(q => {
+            if (q.confidence && confidenceCounts[q.confidence] !== undefined) {
+                confidenceCounts[q.confidence]++;
+            }
+        });
+        
+        const total = questionAnalyses.length;
+        const highPct = (confidenceCounts.High / total) * 100;
+        
+        if (highPct >= 70) return 'High Confidence';
+        if (highPct >= 40) return 'Medium Confidence';
+        return 'Mixed Confidence';
+    }
+
+    renderQuestionScores(questionAnalyses) {
+        const questionLabels = {
+            'gap_filler': 'Gap-Filler?',
+            'new_proof_points': 'New Proof-Points?',
+            'clear_story': 'Clear Story?',
+            'shared_audience_different_function': 'Shared Audience?',
+            'low_friction_integration': 'Low-Friction Integration?',
+            'hands_on_support': 'Hands-On Support?'
+        };
+
+        return questionAnalyses.map(q => `
+            <div class="question-score-item" data-question="${q.question_key}" onclick="dashboard.expandQuestionAccordion(${q.question_id})">
+                <div class="score-badge ${this.getScoreClass(q.score + 3)}">
+                    ${q.score > 0 ? '+' : ''}${q.score}
+                </div>
+                <div class="question-label">${questionLabels[q.question_key] || q.question_key}</div>
+                <div class="confidence confidence-${q.confidence?.toLowerCase()}">${q.confidence}</div>
+            </div>
+        `).join('');
+    }
+
+    extractStrengths(finalSummary) {
+        if (!finalSummary.key_points) return '<p>No specific strengths identified</p>';
+        
+        const strengths = finalSummary.key_points.filter(point => 
+            point.includes('Strategic Gap Filler') || 
+            point.includes('New Proof-Points') ||
+            point.includes('Developer Experience') ||
+            point.includes('Support Commitment') ||
+            point.includes('Chain Abstraction') ||
+            point.includes('Synergy') ||
+            point.includes('✅') ||
+            point.includes('Strong') ||
+            point.includes('High') ||
+            point.includes('Good')
+        );
+
+        if (strengths.length === 0) {
+            // Fallback: extract from full text
+            const fullText = finalSummary.full_text || '';
+            const strengthsSection = this.extractSection(fullText, 'Strengths & Opportunities', 'Challenges & Risks');
+            if (strengthsSection) {
+                const bullets = strengthsSection.split('- ').slice(1).map(item => item.split('\n')[0].trim());
+                return '<ul>' + bullets.slice(0, 4).map(item => `<li>${item}</li>`).join('') + '</ul>';
+            }
+            return '<p>Strategic benefits identified in partnership evaluation</p>';
+        }
+
+        return '<ul>' + strengths.slice(0, 4).map(strength => 
+            `<li>${this.formatText(strength.replace(/^- /, ''))}</li>`
+        ).join('') + '</ul>';
+    }
+
+    extractRisks(finalSummary) {
+        if (!finalSummary.key_points) return '<p>No specific risks identified</p>';
+        
+        const risks = finalSummary.key_points.filter(point => 
+            point.includes('Integration Complexity') || 
+            point.includes('Solver Network') ||
+            point.includes('Security Assumptions') ||
+            point.includes('Docs & Tooling') ||
+            point.includes('❌') ||
+            point.includes('Risk') ||
+            point.includes('Challenge') ||
+            point.includes('Friction') ||
+            point.includes('Limited')
+        );
+
+        if (risks.length === 0) {
+            // Fallback: extract from full text
+            const fullText = finalSummary.full_text || '';
+            const risksSection = this.extractSection(fullText, 'Challenges & Risks', 'Recommendation Rationale');
+            if (risksSection) {
+                const bullets = risksSection.split('- ').slice(1).map(item => item.split('\n')[0].trim());
+                return '<ul>' + bullets.slice(0, 3).map(item => `<li>${item}</li>`).join('') + '</ul>';
+            }
+            return '<p>Implementation considerations require attention</p>';
+        }
+
+        return '<ul>' + risks.slice(0, 3).map(risk => 
+            `<li>${this.formatText(risk.replace(/^- /, ''))}</li>`
+        ).join('') + '</ul>';
+    }
+
+    extractNextSteps(finalSummary) {
+        const fullText = finalSummary.full_text || '';
+        const nextStepsSection = this.extractSection(fullText, 'Next Steps', '');
+        
+        if (nextStepsSection) {
+            const steps = nextStepsSection.split(/\d+\./).slice(1).map(step => step.split('\n')[0].trim());
+            if (steps.length > 0) {
+                return '<ol>' + steps.slice(0, 4).map(step => 
+                    `<li class="action-item">${this.formatText(step)}</li>`
+                ).join('') + '</ol>';
+            }
+        }
+
+        // Fallback: generic next steps based on score
+        const score = parseInt(finalSummary.summary?.match(/(\d+)\/6/) || [0, 0])[1];
+        if (score >= 4) {
+            return `
+                <ol>
+                    <li class="action-item">Initiate partnership discussions</li>
+                    <li class="action-item">Develop joint hackathon track</li>
+                    <li class="action-item">Create co-marketing materials</li>
+                </ol>
+            `;
+        } else if (score >= 1) {
+            return `
+                <ol>
+                    <li class="action-item">Address integration concerns</li>
+                    <li class="action-item">Pilot small-scale collaboration</li>
+                    <li class="action-item">Re-evaluate after improvements</li>
+                </ol>
+            `;
+        } else {
+            return `
+                <ol>
+                    <li class="action-item">Monitor project development</li>
+                    <li class="action-item">Reassess in 6 months</li>
+                </ol>
+            `;
+        }
+    }
+
+    extractSection(text, startMarker, endMarker) {
+        const startIndex = text.indexOf(startMarker);
+        if (startIndex === -1) return null;
+        
+        const contentStart = startIndex + startMarker.length;
+        let endIndex = text.length;
+        
+        if (endMarker) {
+            const foundEnd = text.indexOf(endMarker, contentStart);
+            if (foundEnd !== -1) endIndex = foundEnd;
+        }
+        
+        return text.substring(contentStart, endIndex).trim();
+    }
+
     renderStructuredContent(data, fallback) {
         if (!data) return fallback;
         
@@ -991,20 +1138,22 @@ class PartnershipDashboard {
     }
 
     // Deep Research Methods
-    renderDeepResearch(deepResearchData) {
+    renderDeepResearch(deepResearchData, projectDetails) {
         console.log('🔬 Deep Research Data:', deepResearchData); // Debug log
         
-        // Update metrics with real data
+        // Calculate quality metrics
+        const researchQuality = this.calculateOverallQuality(projectDetails);
+        
+        // Update metrics with real data (cost removed) + add quality metrics
         const timeElement = document.querySelector('#deep-research-time span');
         const toolsElement = document.querySelector('#deep-research-tools span');
-        const costElement = document.querySelector('#deep-research-cost span');
         
         if (deepResearchData.elapsed_time) {
             const minutes = Math.round(deepResearchData.elapsed_time / 60);
-            timeElement.textContent = `${minutes} min`;
+            timeElement.textContent = `${minutes} minutes`;
             timeElement.title = `Real data: ${deepResearchData.elapsed_time.toFixed(1)} seconds`;
         } else {
-            timeElement.textContent = '-- min';
+            timeElement.textContent = '-- minutes';
             timeElement.title = 'No timing data available';
         }
         
@@ -1016,13 +1165,30 @@ class PartnershipDashboard {
             toolsElement.title = 'No tool call data available';
         }
         
-        if (deepResearchData.estimated_cost) {
-            costElement.textContent = `$${deepResearchData.estimated_cost}`;
-            costElement.title = `Real estimated cost: $${deepResearchData.estimated_cost}`;
-        } else {
-            costElement.textContent = '$--';
-            costElement.title = 'No cost data available';
-        }
+        // Add quality metrics as simple bubbles
+        const researchMetrics = document.querySelector('.research-metrics');
+        
+        // Remove any existing quality bubbles first
+        const existingQualityBubbles = researchMetrics.querySelectorAll('.quality-bubble');
+        existingQualityBubbles.forEach(bubble => bubble.remove());
+        
+        // Add quality metric bubbles
+        const qualityBubblesHtml = `
+            <div class="metric-badge quality-bubble" title="Total research sources analyzed">
+                <i class="fas fa-link"></i>
+                <span>${researchQuality.totalSources} sources</span>
+            </div>
+            <div class="metric-badge quality-bubble" title="Average confidence across all analyses">
+                <i class="fas fa-brain"></i>
+                <span>${researchQuality.averageConfidence} confidence</span>
+            </div>
+            <div class="metric-badge quality-bubble" title="Total analysis cost ${researchQuality.hasRealData ? '(Real data)' : '(Estimated)'}">
+                <i class="fas fa-dollar-sign"></i>
+                <span>$${researchQuality.totalCost}${researchQuality.hasRealData ? ' ✓' : ' ~'}</span>
+            </div>
+        `;
+        
+        researchMetrics.insertAdjacentHTML('beforeend', qualityBubblesHtml);
         
         // Render content
         const contentElement = document.getElementById('deep-research-content');
@@ -1049,13 +1215,41 @@ class PartnershipDashboard {
         }
     }
 
-    renderDeepResearchUnavailable() {
+    renderDeepResearchUnavailable(projectDetails) {
         console.log('⚠️ Deep research not available for this project');
         
         document.getElementById('deep-research-content').innerHTML = 
             '<div class="no-data">Deep research not available for this project</div>';
         document.getElementById('deep-research-sources').innerHTML = 
             '<div class="no-data">Run analysis with --deep-research flag to generate enhanced research data</div>';
+            
+        // Clear any existing quality bubbles since we don't have project details
+        const researchMetrics = document.querySelector('.research-metrics');
+        if (researchMetrics) {
+            const existingQualityBubbles = researchMetrics.querySelectorAll('.quality-bubble');
+            existingQualityBubbles.forEach(bubble => bubble.remove());
+        }
+
+        // Show basic quality metrics if project details are available
+        if (projectDetails) {
+            const researchQuality = this.calculateOverallQuality(projectDetails);
+            const researchMetrics = document.querySelector('.research-metrics');
+            const qualityBubblesHtml = `
+                <div class="metric-badge quality-bubble" title="Total research sources analyzed">
+                    <i class="fas fa-link"></i>
+                    <span>${researchQuality.totalSources} sources</span>
+                </div>
+                <div class="metric-badge quality-bubble" title="Average confidence across all analyses">
+                    <i class="fas fa-brain"></i>
+                    <span>${researchQuality.averageConfidence} confidence</span>
+                </div>
+                <div class="metric-badge quality-bubble" title="Total analysis cost ${researchQuality.hasRealData ? '(Real data)' : '(Estimated)'}">
+                    <i class="fas fa-dollar-sign"></i>
+                    <span>$${researchQuality.totalCost}${researchQuality.hasRealData ? ' ✓' : ' ~'}</span>
+                </div>
+            `;
+            researchMetrics.insertAdjacentHTML('beforeend', qualityBubblesHtml);
+        }
     }
 
     // Question Research Context Methods
@@ -1204,9 +1398,23 @@ class PartnershipDashboard {
         const researchLength = questionData.research_data ? questionData.research_data.length : 0;
         const analysisLength = questionData.analysis ? questionData.analysis.length : 0;
         
-        // Calculate metrics
+        // Calculate metrics with more generous scoring
         const researchDepth = researchLength > 3000 ? 'High' : researchLength > 1500 ? 'Med' : 'Low';
-        const analysisCompleteness = Math.min(100, Math.round((analysisLength / 1000) * 100));
+        
+        // More realistic analysis completeness calculation
+        // 600 chars = 85%, 800+ chars = 95%+, with a generous curve
+        let analysisCompleteness;
+        if (analysisLength >= 800) {
+            analysisCompleteness = Math.min(100, 95 + Math.round((analysisLength - 800) / 200 * 5));
+        } else if (analysisLength >= 600) {
+            analysisCompleteness = 85 + Math.round((analysisLength - 600) / 200 * 10);
+        } else if (analysisLength >= 400) {
+            analysisCompleteness = 70 + Math.round((analysisLength - 400) / 200 * 15);
+        } else if (analysisLength >= 200) {
+            analysisCompleteness = 50 + Math.round((analysisLength - 200) / 200 * 20);
+        } else {
+            analysisCompleteness = Math.round((analysisLength / 200) * 50);
+        }
         
         return {
             sourceCount,
@@ -1242,16 +1450,23 @@ class PartnershipDashboard {
         const confidenceClass = averageConfidence >= 2.5 ? 'high' : averageConfidence >= 1.5 ? 'medium' : 'low';
         const confidencePercent = (averageConfidence / 3) * 100;
         
-        // Use REAL data from deep research when available, fallback to calculated estimates
+        // Use REAL data from usage tracking when available, fallback to estimates
         let researchTime = '0';
         let totalCost = '0.00';
+        let hasRealData = false;
         
-        if (projectDetails.deep_research && projectDetails.deep_research.elapsed_time) {
-            // REAL data from database
+        if (projectDetails.usage_data && projectDetails.usage_data.has_real_data) {
+            // REAL data from comprehensive API usage tracking
+            researchTime = (projectDetails.usage_data.total_time / 60).toFixed(1);
+            totalCost = projectDetails.usage_data.total_cost.toFixed(4);
+            hasRealData = true;
+        } else if (projectDetails.deep_research && projectDetails.deep_research.elapsed_time) {
+            // REAL data from deep research only (partial)
             researchTime = (projectDetails.deep_research.elapsed_time / 60).toFixed(1);
             totalCost = projectDetails.deep_research.estimated_cost ? projectDetails.deep_research.estimated_cost.toFixed(2) : '0.00';
+            hasRealData = true;
         } else {
-            // Estimated data when deep research not available
+            // Estimated data when no tracking available
             const questionCount = projectDetails.question_analyses ? projectDetails.question_analyses.length : 0;
             researchTime = (questionCount * 1.5).toFixed(1); // Estimate 1.5 min per question
             totalCost = (questionCount * 0.30).toFixed(2); // Estimate $0.30 per question
@@ -1263,7 +1478,8 @@ class PartnershipDashboard {
             confidenceClass,
             confidencePercent,
             researchTime,
-            totalCost
+            totalCost,
+            hasRealData
         };
     }
 
@@ -1271,6 +1487,54 @@ class PartnershipDashboard {
         const modal = document.getElementById('project-modal');
         modal.classList.remove('active');
         document.body.style.overflow = '';
+    }
+
+    renderPartnershipAssessmentDetailed(questionAnalyses) {
+        const grid = document.getElementById('questions-grid-decision');
+        
+        if (!questionAnalyses || questionAnalyses.length === 0) {
+            grid.innerHTML = '<div class="no-data">No partnership assessment data available</div>';
+            return;
+        }
+
+        grid.innerHTML = questionAnalyses.map(q => {
+            const scoreClass = this.getScoreClass(q.score);
+            const qualityMetrics = this.calculateQuestionQuality(q);
+            
+            return `
+                <div class="question-card-detailed ${scoreClass}" data-question-id="${q.question_id}" onclick="dashboard.switchToQuestionDetail(${q.question_id})">
+                    <div class="question-card-header-detailed">
+                        <div class="question-card-title-detailed">Q${q.question_id}: ${this.getQuestionTitle(q.question_id)}</div>
+                        <div class="question-card-score-detailed">
+                            ${q.score >= 0 ? '+' : ''}${q.score}
+                        </div>
+                    </div>
+                    <div class="question-card-confidence-detailed">Confidence: ${q.confidence}</div>
+                    
+                    <!-- Quality Indicators -->
+                    <div class="question-quality-metrics">
+                        <div class="quality-metric-detailed" title="Source diversity">
+                            <i class="fas fa-link"></i>
+                            <span>${qualityMetrics.sourceCount} sources</span>
+                        </div>
+                        <div class="quality-metric-detailed" title="Research depth">
+                            <i class="fas fa-search"></i>
+                            <span>${qualityMetrics.researchDepth}</span>
+                        </div>
+                        <div class="quality-metric-detailed" title="Analysis completeness">
+                            <i class="fas fa-brain"></i>
+                            <span>${qualityMetrics.analysisCompleteness}%</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    switchToQuestionDetail(questionId) {
+        // Switch to questions tab and expand the specific question
+        this.switchTab('questions');
+        this.expandQuestionAccordion(questionId);
     }
 }
 

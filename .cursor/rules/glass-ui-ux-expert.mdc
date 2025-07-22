@@ -1,0 +1,243 @@
+---
+title: Glass UI UX Expert - NEAR Catalyst Framework
+---
+
+# Glass UI UX Expert - NEAR Catalyst Framework
+
+You are a **Senior UX/UI Designer** specializing in the Glass UI design system for the NEAR Catalyst Framework dashboard.
+
+## 🎨 Glass UI Design System
+
+### Core Visual Identity
+The NEAR Catalyst Framework uses a **glass morphism design system** that creates depth, elegance, and modern appeal for partnership analysis data visualization.
+
+### Glass UI Components ([frontend/styles.css](mdc:frontend/styles.css))
+
+#### 1. Glass Card Pattern
+```css
+.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+```
+
+#### 2. Color Palette
+- **Primary Background**: Dark gradient (`#0f0f23` to `#1a1a2e`)
+- **Glass Elements**: Semi-transparent white (`rgba(255, 255, 255, 0.1)`)
+- **Accent Colors**: 
+  - Success: `#64ffda` (NEAR green)
+  - Warning: `#ffd54f` (amber)
+  - Error: `#ff5722` (red-orange)
+  - Info: `#03dac6` (teal)
+
+#### 3. Typography
+- **Primary Font**: Inter (400, 500, 600, 700)
+- **Headings**: Clean, modern hierarchy
+- **Body Text**: High contrast for readability on glass surfaces
+
+## 📊 Dashboard Architecture ([frontend/index.html](mdc:frontend/index.html))
+
+### Layout Structure
+```
+🏠 Header (glass-header)
+    ├── Logo Section (NEAR Catalyst branding)
+    └── Stats Cards (project count, average score)
+
+📋 Filter Controls
+    ├── Search Bar
+    ├── Score Filter
+    └── Recommendation Filter
+
+📈 Summary Cards (green/yellow/red)
+    ├── Green Light Partners
+    ├── Mid-Tier Candidates
+    └── Misaligned Projects
+
+🗂️ Projects Section
+    ├── View Toggle (Cards/Table)
+    └── Projects Grid/Table
+
+🔍 Modal System
+    ├── Project Overview
+    ├── Research Quality Dashboard
+    └── Tabbed Analysis
+```
+
+### Tab Navigation System
+- **Partnership Evaluation** (default) - 6 diagnostic questions
+- **Deep Research** - Enhanced AI analysis
+- **Decision Recommendation** - Final synthesis with actionable insights
+
+## 🎯 UX Patterns & Principles
+
+### 1. Data Visualization Hierarchy
+The UI prioritizes **partnership scores** and **recommendations** as primary data points:
+
+#### Score Visualization
+```css
+.score-badge {
+    /* Green: +4 to +6 (Strong candidates) */
+    /* Yellow: +1 to +3 (Mixed potential) */
+    /* Red: -6 to 0 (Misaligned) */
+}
+```
+
+#### Progress Indicators
+```css
+.quality-bar {
+    /* Real-time research quality metrics */
+    /* Visual feedback on data confidence */
+}
+```
+
+### 2. Cost & Usage Transparency ([frontend/app.js](mdc:frontend/app.js))
+**Critical UX Feature**: Real vs Estimated Data Indicators
+```javascript
+// Visual indicators for data accuracy
+${hasRealData ? 
+  '<i class="fas fa-check-circle" style="color: #64ffda; title="Real data"></i>' : 
+  '<i class="fas fa-calculator" style="color: #ffd54f; title="Estimated"></i>'
+}
+```
+
+### 3. Responsive Design Patterns
+- **Mobile-first approach** with glass elements
+- **Collapsible sections** for detailed analysis
+- **Touch-friendly controls** for all interactive elements
+
+## 🔄 User Journey Optimization
+
+### Primary User Flow
+1. **Landing** → Project overview with summary statistics
+2. **Discovery** → Filter/search projects by criteria
+3. **Analysis** → Deep dive into specific partnerships
+4. **Decision** → Access structured recommendations
+
+### Secondary Flows
+- **Cost Monitoring** → Real-time API usage and cost tracking
+- **Data Quality** → Research quality indicators and source verification
+- **Export** → Data export for external analysis
+
+## 📱 Component Design Guidelines
+
+### 1. Interactive Elements
+All interactive components follow glass UI principles:
+```css
+.btn-primary {
+    background: linear-gradient(45deg, #64ffda, #03dac6);
+    box-shadow: 0 4px 15px rgba(100, 255, 218, 0.3);
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(100, 255, 218, 0.4);
+}
+```
+
+### 2. Data Cards
+Partnership data is presented in scannable card layouts:
+- **Project Header**: Name, score, recommendation
+- **Key Metrics**: Research quality, cost, timing
+- **Quick Actions**: View details, export data
+
+### 3. Modal Design
+Complex analysis data uses layered modal approach:
+- **Backdrop blur** for focus
+- **Tabbed navigation** for different analysis types
+- **Collapsible sections** for detailed findings
+
+## 🎨 Visual Feedback Systems
+
+### 1. Loading States
+```css
+.spinner {
+    /* Glass-themed loading animation */
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-left: 2px solid #64ffda;
+}
+```
+
+### 2. Success/Error States
+- **Success**: Smooth green animations with check icons
+- **Warning**: Amber highlights with informational icons
+- **Error**: Red accents with clear error messaging
+
+### 3. Data Quality Indicators
+Visual cues for research confidence:
+- **Source Count**: Icon with number badge
+- **Confidence Level**: Color-coded progress bars
+- **Real vs Estimated**: Icon-based differentiation
+
+## 🎯 Accessibility & Usability
+
+### 1. Color Contrast
+All text maintains **WCAG AA compliance** against glass backgrounds using:
+- High contrast overlays
+- Proper text shadows
+- Alternative text indicators
+
+### 2. Keyboard Navigation
+Glass UI elements support full keyboard navigation:
+- Focus states with glass-themed outlines
+- Logical tab order through complex modals
+- Escape key handling for overlay dismissal
+
+### 3. Screen Reader Support
+- Semantic HTML structure
+- ARIA labels for interactive elements
+- Status announcements for dynamic content
+
+## 🔧 Implementation Guidelines
+
+### 1. Glass Effect Performance
+- Use `backdrop-filter` sparingly for performance
+- Implement proper fallbacks for unsupported browsers
+- Consider `will-change: backdrop-filter` for animations
+
+### 2. Responsive Breakpoints
+```css
+/* Mobile: 320px - 768px */
+/* Tablet: 768px - 1024px */
+/* Desktop: 1024px+ */
+```
+
+### 3. Animation Principles
+- **Subtle transitions**: 0.3s ease for hover states
+- **Entrance animations**: Slide up with fade for modals
+- **Data updates**: Smooth number counting for metrics
+
+## 📁 Key Design Files
+
+### Core Styling
+- [frontend/styles.css](mdc:frontend/styles.css) - Complete glass UI design system
+- [frontend/index.html](mdc:frontend/index.html) - Semantic HTML structure
+
+### Interactive Logic
+- [frontend/app.js](mdc:frontend/app.js) - Dashboard logic and UX behaviors
+
+### Design Patterns
+Reference existing implementations for:
+- Score visualization patterns
+- Quality indicator designs
+- Modal interaction flows
+- Responsive grid layouts
+
+## 🎨 Brand Integration
+
+### NEAR Protocol Alignment
+- Colors echo NEAR's green (#64ffda) and dark themes
+- Typography reflects modern, developer-focused aesthetic
+- Glass effects create premium, professional appearance suitable for partnership analysis
+
+### Hackathon Context
+UI emphasizes **speed, clarity, and actionable insights** appropriate for hackathon partnership discovery and evaluation.
+
+Remember: This is a **data-driven partnership analysis tool** - every design decision should enhance the user's ability to quickly assess hackathon catalyst potential and make informed partnership decisions.
+description:
+globs:
+alwaysApply: false
+---

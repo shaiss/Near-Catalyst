@@ -18,7 +18,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration
-DATABASE_PATH = 'project_analyses_multi_agent.db'
+DATABASE_PATH = os.getenv('DATABASE_PATH', 'project_analyses_multi_agent.db')
 FRONTEND_DIR = 'frontend'
 
 def get_db_connection():
@@ -203,6 +203,69 @@ def get_project_details(project_name):
                 'twitter': catalog_row['twitter'],
                 'cached': True  # Flag to indicate this is cached data
             }
+
+        # Get real API usage data for cost and time calculations
+        try:
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_calls,
+                    SUM(total_tokens) as total_tokens,
+                    SUM(estimated_cost) as total_cost,
+                    SUM(response_time) as total_time,
+                    COUNT(DISTINCT session_id) as total_sessions,
+                    AVG(estimated_cost) as avg_cost_per_call,
+                    MAX(created_at) as last_analysis_time,
+                    COUNT(CASE WHEN reasoning_tokens > 0 THEN 1 END) as reasoning_calls,
+                    SUM(reasoning_tokens) as total_reasoning_tokens
+                FROM api_usage_tracking 
+                WHERE project_name = ?
+            ''', (project_name,))
+
+            usage_row = cursor.fetchone()
+            usage_data = None
+            if usage_row and usage_row['total_calls'] > 0:
+                usage_data = {
+                    'total_calls': usage_row['total_calls'],
+                    'total_tokens': usage_row['total_tokens'],
+                    'total_cost': round(usage_row['total_cost'] or 0, 4),
+                    'total_time': round(usage_row['total_time'] or 0, 1),
+                    'total_sessions': usage_row['total_sessions'],
+                    'avg_cost_per_call': round(usage_row['avg_cost_per_call'] or 0, 4),
+                    'last_analysis_time': usage_row['last_analysis_time'],
+                    'reasoning_calls': usage_row['reasoning_calls'],
+                    'total_reasoning_tokens': usage_row['total_reasoning_tokens'],
+                    'has_real_data': True
+                }
+
+                # Get breakdown by agent type
+                cursor.execute('''
+                    SELECT 
+                        agent_type,
+                        COUNT(*) as calls,
+                        SUM(total_tokens) as tokens,
+                        SUM(estimated_cost) as cost,
+                        AVG(response_time) as avg_time
+                    FROM api_usage_tracking 
+                    WHERE project_name = ?
+                    GROUP BY agent_type
+                    ORDER BY cost DESC
+                ''', (project_name,))
+
+                agent_breakdown = []
+                for agent_row in cursor.fetchall():
+                    agent_breakdown.append({
+                        'agent_type': agent_row['agent_type'],
+                        'calls': agent_row['calls'],
+                        'tokens': agent_row['tokens'],
+                        'cost': round(agent_row['cost'] or 0, 4),
+                        'avg_time': round(agent_row['avg_time'] or 0, 2)
+                    })
+
+                usage_data['agent_breakdown'] = agent_breakdown
+        
+        except Exception as e:
+            print(f"ERROR: Failed to fetch usage data for {project_name}: {e}")
+            usage_data = None
         
         # Prepare response
         result = format_project_data(project_row)
@@ -211,7 +274,8 @@ def get_project_details(project_name):
             'general_sources': json.loads(project_row['general_sources']) if project_row['general_sources'] else [],
             'question_analyses': question_analyses,
             'deep_research': deep_research_data,
-            'catalog_data': catalog_data  # Include cached catalog data
+            'catalog_data': catalog_data,  # Include cached catalog data
+            'usage_data': usage_data  # Include real API usage and cost data
         })
         
         conn.close()

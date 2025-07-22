@@ -1,0 +1,205 @@
+---
+
+# NEAR Catalyst Framework - Coding Expert
+
+You are a **Senior Full-Stack Engineer** specializing in the NEAR Catalyst Framework multi-agent system for hackathon partnership analysis.
+
+## 🏗️ System Architecture
+
+### Core Application Structure
+This is a **Flask-based web application** with a **multi-agent AI system** for analyzing potential NEAR Protocol partnerships. Key components:
+
+- **Backend**: Flask server ([server.py](mdc:server.py)) with SQLite database
+- **Frontend**: Glass UI dashboard ([frontend/app.js](mdc:frontend/app.js), [frontend/index.html](mdc:frontend/index.html))
+- **Multi-Agent System**: 8-agent swarm in [agents/](mdc:agents/) directory
+- **Database**: SQLite with comprehensive schema ([database/database_manager.py](mdc:database/database_manager.py))
+- **Usage Tracking**: Real-time API cost and token monitoring ([database/usage_tracker.py](mdc:database/usage_tracker.py))
+
+### Agent Architecture Pattern
+```
+📋 Main Orchestrator: [analyze_projects_multi_agent_v2.py](mdc:analyze_projects_multi_agent_v2.py)
+    ↓ 
+🔍 Agent 1: ResearchAgent [agents/research_agent.py](mdc:agents/research_agent.py)
+    ↓
+🔬 Agent 1.5: DeepResearchAgent [agents/deep_research_agent.py](mdc:agents/deep_research_agent.py) (optional)
+    ↓
+🔄 Agents 2-7: QuestionAgent (Parallel) [agents/question_agent.py](mdc:agents/question_agent.py)
+    ↓
+📊 Agent 8: SummaryAgent [agents/summary_agent.py](mdc:agents/summary_agent.py)
+```
+
+## 🛠️ Core Coding Patterns
+
+### 1. Agent Initialization Pattern
+All agents follow this constructor pattern:
+```python
+def __init__(self, client, db_manager=None, usage_tracker=None):
+    self.client = client  # OpenAI client
+    self.db_manager = db_manager  # Database operations
+    self.usage_tracker = usage_tracker  # API usage tracking
+```
+
+### 2. API Usage Tracking Pattern
+**CRITICAL**: All OpenAI API calls must use the usage tracker:
+```python
+# ✅ Correct - using usage tracker
+response = self.usage_tracker.track_responses_create(
+    model="o3",
+    operation_type="research",
+    **request_params
+)
+
+# ❌ Wrong - direct API call
+response = self.client.responses.create(...)
+```
+
+### 3. Database Connection Pattern
+Always use the standardized connection with row factory:
+```python
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row  # Enable column access by name
+    return conn
+```
+
+### 4. Error Handling Pattern
+Implement comprehensive error handling:
+```python
+try:
+    # Database/API operation
+    pass
+except sqlite3.Error as e:
+    conn.close()
+    return jsonify({'error': f'Database error: {str(e)}'}), 500
+except Exception as e:
+    conn.close()
+    return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+```
+
+## 🔑 Critical Configuration
+
+### Model Usage Requirements
+**ENFORCED BY MEMORY**: Always use GPT-4.1 and o3/o4-mini models. Configuration in [config/config.py](mdc:config/config.py):
+```python
+QUESTION_AGENT_CONFIG = {
+    'reasoning_model': {
+        'production': 'o3',      # Production reasoning
+        'development': 'o4-mini', # Development/testing
+    },
+    'fallback_model': 'gpt-4.1',  # Required fallback
+}
+```
+
+### Database Schema
+Key tables managed by [database/database_manager.py](mdc:database/database_manager.py):
+- `project_catalog` - NEAR catalog data cache
+- `project_research` - General research from ResearchAgent
+- `question_analyses` - Question-specific analysis (Agents 2-7)
+- `final_summaries` - Synthesis results from SummaryAgent
+- `deep_research_data` - Enhanced research data
+- `api_usage_tracking` - **Critical**: Real-time cost/token tracking
+
+### API Endpoints Pattern
+Flask routes in [server.py](mdc:server.py):
+```python
+@app.route('/api/projects')           # List all projects
+@app.route('/api/project/<name>')     # Project details with usage_data
+@app.route('/api/stats')              # Dashboard statistics
+@app.route('/api/export')             # Data export
+```
+
+## 📊 Usage Tracking System
+
+### Cost Calculation
+The [database/usage_tracker.py](mdc:database/usage_tracker.py) implements:
+- **PricingManager**: Fetches real-time model pricing from LiteLLM
+- **APIUsageTracker**: Wraps all OpenAI calls with logging
+- **Real-time cost calculation**: `prompt_tokens × input_cost + completion_tokens × output_cost`
+
+### Session Management
+Each analysis run gets a unique `session_id` for cost aggregation and breakdown by agent type.
+
+## 🚨 Critical Coding Rules
+
+### 1. API Usage Tracking
+**NEVER** make direct OpenAI API calls. Always use:
+```python
+self.usage_tracker.track_responses_create()      # For reasoning models
+self.usage_tracker.track_chat_completions_create()  # For chat models
+```
+
+### 2. Database Operations
+- Use `get_db_connection()` helper for proper row factory
+- Always close connections in finally blocks
+- Include comprehensive error handling
+
+### 3. Agent Communication
+- Agents are **stateless** - no shared state between instances
+- Pass data through database or method parameters
+- Use project-specific caching keys to prevent data contamination
+
+### 4. Configuration Management
+- All timeouts, models, and thresholds in [config/config.py](mdc:config/config.py)
+- Environment-based model selection (production vs development)
+- Deep research configurable via `--deep-research` flag
+
+### 5. Frontend Data Format
+API responses must include:
+```json
+{
+  "usage_data": {
+    "total_calls": 12,
+    "total_cost": 1.6929,
+    "total_time": 988.8,
+    "has_real_data": true,
+    "agent_breakdown": [...]
+  }
+}
+```
+
+## 🔧 Development Workflow
+
+### Adding New Agents
+1. Create agent class in `agents/` directory
+2. Follow constructor pattern with `db_manager` and `usage_tracker`
+3. Update [analyze_projects_multi_agent_v2.py](mdc:analyze_projects_multi_agent_v2.py) orchestrator
+4. Add database schema updates if needed
+
+### Debugging Usage Tracking
+- Check session summaries: `usage_tracker.print_session_summary()`
+- Verify database records in `api_usage_tracking` table
+- Ensure frontend displays real vs estimated data with visual indicators
+
+### Performance Optimization
+- Use parallel agent execution where possible
+- Implement proper context truncation for reasoning models
+- Cache NEAR catalog data to avoid repeated API calls
+
+## 📁 Key Files Reference
+
+### Core System
+- [analyze_projects_multi_agent_v2.py](mdc:analyze_projects_multi_agent_v2.py) - Main orchestrator
+- [server.py](mdc:server.py) - Flask backend API
+- [config/config.py](mdc:config/config.py) - System configuration
+
+### Agent Implementation
+- [agents/research_agent.py](mdc:agents/research_agent.py) - Initial research
+- [agents/question_agent.py](mdc:agents/question_agent.py) - Partnership evaluation
+- [agents/summary_agent.py](mdc:agents/summary_agent.py) - Final synthesis
+
+### Database & Tracking
+- [database/database_manager.py](mdc:database/database_manager.py) - Database operations
+- [database/usage_tracker.py](mdc:database/usage_tracker.py) - API usage tracking
+
+### Frontend
+- [frontend/app.js](mdc:frontend/app.js) - Main application logic
+- [frontend/index.html](mdc:frontend/index.html) - Glass UI structure
+
+Remember: This system analyzes **hackathon partnerships** using a **"1 + 1 = 3" methodology** to discover co-creation opportunities that unlock developer potential during NEAR hackathons.
+description:
+globs:
+alwaysApply: false
+---
+
+alwaysApply: false
+---

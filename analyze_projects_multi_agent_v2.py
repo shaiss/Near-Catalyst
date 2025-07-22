@@ -95,6 +95,7 @@ from agents import (
     DIAGNOSTIC_QUESTIONS, NEAR_CATALOG_API, BATCH_PROCESSING_CONFIG, DEEP_RESEARCH_CONFIG
 )
 from database import DatabaseManager
+from database.usage_tracker import APIUsageTracker
 
 
 def setup_environment():
@@ -296,7 +297,7 @@ def should_skip_project(db_manager, project_name, force_refresh):
             conn.close()
 
 
-def run_parallel_question_analysis(client, project_name, general_research, db_path, benchmark_format='auto'):
+def run_parallel_question_analysis(client, project_name, general_research, db_path, benchmark_format='auto', usage_tracker=None):
     """
     Execute all 6 question agents in parallel for maximum efficiency.
     
@@ -306,6 +307,7 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
         general_research (str): General research context
         db_path (str): Path to SQLite database
         benchmark_format (str): Benchmark format preference
+        usage_tracker (APIUsageTracker): Optional usage tracker for cost monitoring
         
     Returns:
         list: Results from all question agents, sorted by question ID
@@ -314,8 +316,9 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
     question_results = []
     start_time = time.time()
     
-    # Initialize question agent
-    question_agent = QuestionAgent(client)
+    # Initialize question agent with usage tracking
+    db_manager = DatabaseManager(db_path)
+    question_agent = QuestionAgent(client, db_manager, usage_tracker)
     
     # Use ThreadPoolExecutor for parallel execution
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
@@ -409,9 +412,12 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         # Initialize database connection
         conn, cursor = db_manager.initialize_database()
         
+        # Initialize usage tracking for this project analysis
+        usage_tracker = APIUsageTracker(client, db_manager)
+        
         # Step 1: General Research Agent
         print(f"  Running general research agent...")
-        research_agent = ResearchAgent(client)
+        research_agent = ResearchAgent(client, db_manager, usage_tracker)
         
         # Fetch full project details for research context
         catalog_data = fetch_full_project_details(slug)
@@ -436,7 +442,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         deep_research_result = None
         if args.deep_research and research_result["success"]:
             print(f"  🔬 Deep research requested...")
-            deep_research_agent = DeepResearchAgent(client)
+            deep_research_agent = DeepResearchAgent(client, db_manager, usage_tracker)
             
             # Check if deep research is enabled via config OR command line flag (flag overrides config)
             config_enabled = deep_research_agent.is_enabled()
@@ -482,7 +488,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
             print(f"  📊 Using deep research data for question analysis")
         
         question_results = run_parallel_question_analysis(
-            client, name, research_context, db_manager.db_path, args.benchmark_format
+            client, name, research_context, db_manager.db_path, args.benchmark_format, usage_tracker
         )
         
         if args.questions_only:
@@ -490,7 +496,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
             return True
 
         # Step 3: Summary Agent
-        summary_agent = SummaryAgent(client)
+        summary_agent = SummaryAgent(client, db_manager, usage_tracker)
         summary_result = summary_agent.analyze(
             name, research_context, question_results, system_prompt, args.benchmark_format
         )
@@ -508,6 +514,9 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         if deep_research_result and deep_research_result.get("success"):
             score_info += " (with deep research)"
         print(f"  ✓ Complete analysis stored. {score_info}")
+        
+        # Print usage summary for this project
+        usage_tracker.print_session_summary()
         
         return True
         
@@ -674,7 +683,8 @@ Database management:
     args = parser.parse_args()
 
     # Initialize database manager first for database operations
-    db_manager = DatabaseManager()
+    db_path = os.getenv('DATABASE_PATH', 'project_analyses_multi_agent.db')
+    db_manager = DatabaseManager(db_path)
     
     # Handle database listing
     if args.list:

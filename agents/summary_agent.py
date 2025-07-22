@@ -16,10 +16,14 @@ class SummaryAgent:
     Agent 8: Summary agent that synthesizes all question analyses into final recommendation.
     """
     
-    def __init__(self, client):
-        """Initialize the summary agent with OpenAI client."""
+    def __init__(self, client, db_manager=None, usage_tracker=None):
+        """Initialize the summary agent with OpenAI client and usage tracking."""
         self.client = client
         self.timeout = TIMEOUTS['summary_agent']
+        
+        # Usage tracking support (can be added later)
+        self.db_manager = db_manager
+        self.usage_tracker = usage_tracker
     
     def analyze(self, project_name: str, general_research: str, question_analyses: List[Dict], system_prompt: str, benchmark_format: str = 'auto') -> Dict:
         """

@@ -29,11 +29,15 @@ class DeepResearchAgent:
     4. Returns comprehensive analyst-level findings
     """
     
-    def __init__(self, client):
-        """Initialize the deep research agent with OpenAI client."""
+    def __init__(self, client, db_manager=None, usage_tracker=None):
+        """Initialize the deep research agent with OpenAI client and usage tracking."""
         self.client = client
         self.config = DEEP_RESEARCH_CONFIG
         self.timeout = TIMEOUTS['deep_research_agent']
+        
+        # Usage tracking support (can be added later)
+        self.db_manager = db_manager
+        self.usage_tracker = usage_tracker
     
     def is_enabled(self):
         """Check if deep research is enabled in configuration."""

@@ -6,9 +6,7 @@ python-dotenv>=1.0.0
 flask>=3.0.0
 flask-cors>=4.0.0
 
-# Optional dependencies for enhanced functionality
-sqlite3  # Built into Python - used for data persistence
-concurrent.futures  # Built into Python - used for parallel agent execution
+# Note: sqlite3 and concurrent.futures are built into Python 3.8+
 
 # Deep Research Feature:
 # - Uses OpenAI's o4-mini-deep-research-2025-06-26 model

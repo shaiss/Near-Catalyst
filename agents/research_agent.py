@@ -16,10 +16,14 @@ class ResearchAgent:
     using OpenAI's web search capabilities.
     """
     
-    def __init__(self, client):
-        """Initialize the research agent with OpenAI client."""
+    def __init__(self, client, db_manager=None, usage_tracker=None):
+        """Initialize the research agent with OpenAI client and usage tracking."""
         self.client = client
         self.timeout = TIMEOUTS['research_agent']
+        
+        # Usage tracking support (can be added later)
+        self.db_manager = db_manager
+        self.usage_tracker = usage_tracker
     
     def analyze(self, project_name, enriched_context):
         """
@@ -48,10 +52,55 @@ class ResearchAgent:
         if basic_profile.get('phase'):
             context_parts.append(f"Phase: {basic_profile['phase']}")
         
-        # Rich catalog data
+        # Enhanced catalog data extraction
         if catalog_data:
-            if catalog_data.get('description'):
-                context_parts.append(f"Description: {catalog_data['description']}")
+            # Get profile data from catalog response
+            catalog_profile = catalog_data.get('profile', {})
+            
+            # Core project info
+            if catalog_profile.get('description'):
+                context_parts.append(f"Description: {catalog_profile['description'][:500]}...")  # Truncate long descriptions
+            
+            # CRITICAL: Live dApp URL for research guidance
+            if catalog_profile.get('dapp'):
+                context_parts.append(f"Live dApp: {catalog_profile['dapp']}")
+            
+            # Social and development links
+            if catalog_profile.get('linktree'):
+                linktree = catalog_profile['linktree']
+                social_links = []
+                for platform, url in linktree.items():
+                    if url and url.strip():  # Only include non-empty URLs
+                        social_links.append(f"{platform}: {url}")
+                if social_links:
+                    context_parts.append(f"Social Links: {', '.join(social_links[:5])}")  # Limit to 5 links to avoid token bloat
+            
+            # Technical infrastructure
+            if catalog_data.get('contracts'):
+                contracts = catalog_data['contracts']
+                if isinstance(contracts, dict):
+                    contract_list = [f"{name}: {addr}" for name, addr in contracts.items() if addr and addr.strip()]
+                    if contract_list:
+                        context_parts.append(f"Smart Contracts: {', '.join(contract_list)}")
+                elif isinstance(contracts, list) and contracts:
+                    context_parts.append(f"Smart Contracts: {', '.join(contracts)}")
+            
+            # Token information
+            if catalog_data.get('tokens'):
+                tokens = catalog_data['tokens']
+                if isinstance(tokens, dict):
+                    token_details = []
+                    for token_key, token_info in tokens.items():
+                        if isinstance(token_info, dict) and token_info.get('symbol'):
+                            token_details.append(f"{token_info.get('symbol')} ({token_info.get('name', 'Unknown')})")
+                    if token_details:
+                        context_parts.append(f"Tokens: {', '.join(token_details)}")
+            
+            # Community engagement metrics
+            if catalog_profile.get('lnc') and str(catalog_profile['lnc']).strip():
+                context_parts.append(f"Learn NEAR Club Score: {catalog_profile['lnc']}")
+            
+            # Legacy support for direct catalog fields (backward compatibility)
             if catalog_data.get('category'):
                 context_parts.append(f"Category: {catalog_data['category']}")
             if catalog_data.get('stage'):
@@ -71,12 +120,18 @@ class ResearchAgent:
         
         known_context = '\n'.join(context_parts) if context_parts else "Limited project information available"
         
+        # Check if we have a live dApp URL for enhanced research guidance
+        dapp_guidance = ""
+        if catalog_data and catalog_data.get('profile', {}).get('dapp'):
+            dapp_url = catalog_data['profile']['dapp']
+            dapp_guidance = f"\n🎯 LIVE DAPP AVAILABLE: {dapp_url}\nUse this to verify current functionality, developer integration patterns, and user experience. This provides concrete evidence for your analysis.\n"
+
         research_prompt = f"""
 Research the project "{project_name}" for NEAR Catalyst Framework evaluation using the "1+1=3" discovery methodology.
 
 KNOWN PROJECT INFORMATION FROM NEAR CATALOG:
 {known_context}
-
+{dapp_guidance}
 Your research should focus on identifying hackathon co-creation partners that can unlock developer potential 
 and create exponential value during NEAR hackathons and developer events.
 

@@ -4,15 +4,24 @@ Question Agent for NEAR Catalyst Framework
 
 This agent evaluates specific diagnostic questions to assess hackathon catalyst potential,
 focusing on discovering co-creation partners that unlock developer potential during hackathons.
+
+ENHANCED WITH REASONING MODELS:
+- Uses o3 (production) or o4-mini (development) for complex multi-source analysis
+- Unified responses.create() API with reasoning.effort='medium'
+- Intelligent context optimization and token usage tracking
+- Fallback to GPT-4.1 if reasoning models are unavailable
 """
 
 import json
 import sqlite3
 import hashlib
 import time
+import os
 from datetime import datetime
 
-from config.config import TIMEOUTS, PARALLEL_CONFIG, format_benchmark_examples_for_prompt, get_framework_principles
+from config.config import TIMEOUTS, PARALLEL_CONFIG, QUESTION_AGENT_CONFIG, format_benchmark_examples_for_prompt, get_framework_principles
+from database.usage_tracker import APIUsageTracker
+from database.database_manager import DatabaseManager
 
 
 class QuestionAgent:
@@ -21,11 +30,64 @@ class QuestionAgent:
     each, using project-specific caching to prevent data poisoning.
     """
     
-    def __init__(self, client):
-        """Initialize the question agent with OpenAI client."""
+    def __init__(self, client, db_manager: DatabaseManager = None, usage_tracker: APIUsageTracker = None):
+        """Initialize the question agent with OpenAI client and usage tracking."""
         self.client = client
         self.timeout = TIMEOUTS['question_agent']
         self.analysis_timeout = TIMEOUTS['analysis_agent']
+        self.config = QUESTION_AGENT_CONFIG
+        self.environment = self._detect_environment()
+        
+        # Initialize usage tracking
+        if usage_tracker:
+            self.usage_tracker = usage_tracker
+        elif db_manager:
+            self.usage_tracker = APIUsageTracker(client, db_manager)
+        else:
+            # Fallback - create basic database manager for tracking
+            self.usage_tracker = APIUsageTracker(client, DatabaseManager())
+        
+        print(f"🧠 Question Agent initialized with {self._get_reasoning_model()} ({self.environment} mode)")
+    
+    def _detect_environment(self):
+        """Detect if we're in development or production environment."""
+        # Check for explicit environment override
+        env_override = os.getenv('REASONING_ENV')
+        if env_override in ['development', 'production']:
+            return env_override
+            
+        # Check for common development indicators
+        if (os.getenv('FLASK_ENV') == 'development' or 
+            os.getenv('DEBUG') == 'True' or
+            os.getenv('NODE_ENV') == 'development' or
+            'dev' in os.getcwd().lower() or
+            'test' in os.getcwd().lower()):
+            return 'development'
+        return 'production'
+    
+    def _get_reasoning_model(self):
+        """Get the appropriate reasoning model based on environment."""
+        return self.config['reasoning_model'][self.environment]
+    
+    def _create_reasoning_request(self, prompt, include_web_search=False):
+        """Create a standardized reasoning request with proper parameters."""
+        request_params = {
+            'model': self._get_reasoning_model(),
+            'reasoning': {
+                'effort': self.config['reasoning_model']['effort'],
+                'summary': 'auto' if self.config['reasoning_model']['include_reasoning_summary'] else None
+            },
+            'input': [{"role": "user", "content": prompt}],  # FIXED: Must be list of message objects
+            'max_output_tokens': self.config['reasoning_model']['max_output_tokens'],
+            'timeout': self.timeout
+        }
+        
+        if include_web_search and self.config['use_web_search']:
+            request_params['tools'] = [{"type": "web_search_preview", "search_context_size": "high"}]
+        
+        return request_params
+    
+
     
     def generate_cache_key(self, project_name, question_key):
         """Generate a unique cache key for project-specific question research."""
@@ -86,13 +148,13 @@ class QuestionAgent:
             conn.close()
             
             # Step 1: Research specific question
-            print(f"    Q{question_config['id']}: Conducting research...")
+            print(f"    Q{question_config['id']}: Conducting research with {self._get_reasoning_model()}...")
             question_research = self._conduct_research(
                 project_name, question_config["question"], question_config["description"], question_config["search_focus"]
             )
             
             # Step 2: Analyze the question with research
-            print(f"    Q{question_config['id']}: Analyzing with GPT-4.1...")
+            print(f"    Q{question_config['id']}: Analyzing with reasoning model...")
             analysis_result = self._analyze_question(project_name, question_config, general_research, question_research, benchmark_format)
             
             # Step 3: Store results in database
@@ -147,12 +209,29 @@ Consider NEAR's context:
 Return comprehensive details that help evaluate: {question_text}
 """
         
-        research_response = self.client.responses.create(
-            model="gpt-4.1",  # Using GPT-4.1 as specified in memory
-            tools=[{"type": "web_search_preview", "search_context_size": "high"}],
-            input=research_prompt,
-            timeout=self.timeout
-        )
+        # Set context for usage tracking
+        self.usage_tracker.set_context(project_name, "question_agent")
+        
+        # UPGRADED: Using o3/o4-mini reasoning models with web search for enhanced research
+        try:
+            request_params = self._create_reasoning_request(research_prompt, include_web_search=True)
+            print(f"      🧠 Using {self._get_reasoning_model()} for research with reasoning")
+            research_response = self.usage_tracker.track_responses_create(
+                model=request_params.pop('model'),
+                operation_type="research",
+                **request_params
+            )
+        except Exception as e:
+            # Fallback to GPT-4.1 if reasoning models are unavailable
+            print(f"      ⚠️ Reasoning model failed: {str(e)[:100]}...")
+            print(f"      🔄 Falling back to {self.config['fallback_model']}")
+            research_response = self.usage_tracker.track_responses_create(
+                model=self.config['fallback_model'],
+                operation_type="research_fallback",
+                tools=[{"type": "web_search_preview", "search_context_size": "high"}],
+                input=[{"role": "user", "content": research_prompt}],
+                timeout=self.timeout
+            )
         
         # Extract research content and sources
         research_content = ""
@@ -198,9 +277,10 @@ Return comprehensive details that help evaluate: {question_text}
         benchmark_examples = format_benchmark_examples_for_prompt(benchmark_format)
         framework_principles = get_framework_principles(benchmark_format)
         
-        # Truncate research to fit context limits
-        truncated_general = general_research[:2000]
-        truncated_question = question_research["content"][:3000]
+        # Context optimization for reasoning models 
+        max_context = self.config['context_optimization']['max_context_length']
+        truncated_general = general_research[:max_context//2]
+        truncated_question = question_research["content"][:max_context//2]
         
         # Check if this is deep research data (longer and more comprehensive)
         research_type = "deep research" if len(general_research) > 5000 else "general research"
@@ -245,15 +325,38 @@ Focus on hackathon-specific evidence: integration speed, developer support, time
 """
 
         try:
-            # Using gpt-4.1 for analysis as specified in memory requirements
-            response = self.client.chat.completions.create(
-                model="gpt-4.1",  # CRITICAL: Use GPT-4.1 as required
-                messages=[{"role": "user", "content": analysis_prompt}],
-                max_tokens=500,
-                timeout=TIMEOUTS['question_agent']
-            )
-            
-            analysis_text = response.choices[0].message.content.strip()
+            # UPGRADED: Using o3/o4-mini reasoning models for complex analysis with multi-source context
+            try:
+                request_params = self._create_reasoning_request(analysis_prompt, include_web_search=False)
+                print(f"      🧠 Using {self._get_reasoning_model()} for analysis with reasoning")
+                response = self.usage_tracker.track_responses_create(
+                    model=request_params.pop('model'),
+                    operation_type="analysis",
+                    **request_params
+                )
+                
+                # Extract response from the new responses API format
+                analysis_text = ""
+                for item in response.output:
+                    if item.type == "message":
+                        for content_item in item.content:
+                            if content_item.type == "output_text":
+                                analysis_text = content_item.text.strip()
+                                break
+                        break
+                        
+            except Exception as e:
+                # Fallback to GPT-4.1 if reasoning models are unavailable
+                print(f"      ⚠️ Reasoning model analysis failed: {str(e)[:100]}...")
+                print(f"      🔄 Falling back to {self.config['fallback_model']}")
+                response = self.usage_tracker.track_chat_completions_create(
+                    model=self.config['fallback_model'],
+                    operation_type="analysis_fallback",
+                    messages=[{"role": "user", "content": analysis_prompt}],
+                    max_tokens=500,
+                    timeout=TIMEOUTS['question_agent']
+                )
+                analysis_text = response.choices[0].message.content.strip()
             
             # Parse the structured response with enhanced error handling
             parsed_result = self._parse_analysis_response(analysis_text, question_config['id'])
