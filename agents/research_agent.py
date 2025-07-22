@@ -37,20 +37,40 @@ class ResearchAgent:
         phase = profile.get('phase', 'Unknown')
         
         research_prompt = f"""
-        Research the project "{project_name}" comprehensively. Known info from NEAR catalog:
+        Research the project "{project_name}" for NEAR Protocol partnership evaluation using the "1+1=3" framework.
+        
+        Known info from NEAR catalog:
         - Tagline: {tagline}
         - Tags: {tags}
         - Phase: {phase}
         
-        Please provide detailed information about:
-        1. Official website, documentation, and repositories
-        2. Technical architecture and core technology stack
-        3. Current development status and recent updates
-        4. Team background, advisors, and funding history
-        5. Integration capabilities, APIs, and developer tools
-        6. Community size, adoption metrics, and partnerships
-        7. Business model and tokenomics (if applicable)
-        8. Competitive landscape and positioning
+        Focus your research on partnership potential as a force multiplier for NEAR developers:
+        
+        **A. Synergistic Technology Assessment:**
+        1. Official website, documentation, APIs, and core technology offering
+        2. Does this fill a strategic gap in NEAR's stack or overlap with NEAR's core blockchain functionality?
+        3. Integration capabilities - APIs, SDKs, developer tools, and documentation quality
+        4. Previous blockchain integrations or Web3 partnership examples
+        
+        **B. Aligned Developer Ecosystem Analysis:**
+        5. Target developer audience - do they serve the same developers as NEAR?
+        6. Developer workflow positioning - different function or competing role?
+        7. Community size, developer adoption metrics, and support quality
+        8. Technical support responsiveness and commitment to developer success
+        
+        **C. Clear and Immediate Value for Builders:**
+        9. Integration complexity - can developers wire the stacks together in hours?
+        10. Hackathon readiness - plug-and-play integration vs complex setup
+        11. Partnership support history - mentors, bounties, hands-on hackathon participation
+        12. Potential for "Better Together" narrative that's clear without diagrams
+        
+        **Red Flag Detection:**
+        - Direct product overlap with NEAR's blockchain functionality
+        - Either/or choice scenarios for developers
+        - "Logo on a slide" partnerships with no technical substance
+        - Conflicting technical standards or integration friction
+        
+        Evaluate specifically: Does this create exponential value (1+1=3) when combined with NEAR Protocol for hackathon developers?
         """
         
         try:

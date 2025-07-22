@@ -11,7 +11,7 @@ import json
 import time
 import hashlib
 from datetime import datetime
-from .config import TIMEOUTS, PARALLEL_CONFIG
+from .config import TIMEOUTS, PARALLEL_CONFIG, format_benchmark_examples_for_prompt, get_framework_principles
 
 
 class QuestionAgent:
@@ -126,12 +126,20 @@ class QuestionAgent:
     def _conduct_research(self, project_name, question_text, description, search_focus):
         """Conduct question-specific research using web search."""
         research_prompt = f"""
-        For the project "{project_name}", research specifically about: {description}
+        For the project "{project_name}", research specifically for NEAR Protocol hackathon partnership evaluation.
         
+        Focus Question: {description}
         Search Focus: {search_focus}
         
-        Use web search to find relevant information about this project.
-        Return comprehensive details about: {question_text}
+        Research this project's potential as a NEAR Protocol hackathon partner, specifically addressing: {question_text}
+        
+        Consider NEAR's context:
+        - NEAR Protocol is a developer-friendly blockchain with focus on usability
+        - NEAR hackathons typically last 48-72 hours with rapid prototyping needs
+        - NEAR developers use JavaScript/TypeScript, Rust, and AssemblyScript
+        - NEAR ecosystem emphasizes developer experience and easy onboarding
+        
+        Return comprehensive details that help evaluate: {question_text}
         """
         
         research_response = self.client.responses.create(
@@ -165,8 +173,14 @@ class QuestionAgent:
     
     def _analyze_research(self, project_name, general_research, research_content, question_text, description):
         """Analyze the research data for the specific question."""
+        
+        # Load framework benchmarks and principles
+        benchmark_examples = format_benchmark_examples_for_prompt()
+        framework_principles = get_framework_principles()
+        
         analysis_prompt = f"""
         Project: {project_name}
+        NEAR Protocol Partnership Framework Evaluation
         
         General Research Context:
         {general_research[:2000]}  # Truncate to avoid token limits
@@ -174,17 +188,34 @@ class QuestionAgent:
         Question-Specific Research:
         {research_content}
         
-        Based on this research, analyze: {question_text}
+        Evaluate this project using the "1+1=3" Partnership Framework for: {question_text}
         
-        Description: {description}
+        Evaluation Context: {description}
+        
+        {benchmark_examples}
+        
+        {framework_principles}
+        
+        Specific Evaluation Criteria for {question_text}:
+        - Does this create exponential value (1+1=3) when combined with NEAR?
+        - Is this complementary to NEAR's core blockchain functionality or competitive?
+        - How does this compare to the framework benchmark examples?
+        - What specific evidence supports the score?
+        
+        Consider NEAR's Position:
+        - Developer-friendly blockchain with chain abstraction focus
+        - JavaScript/TypeScript/Rust developer ecosystem
+        - 48-72 hour hackathon rapid prototyping requirements
+        - Target audience: Web3 builders and traditional developers entering blockchain
         
         Provide your analysis with:
-        1. Clear rationale
-        2. Specific evidence from the research
-        3. A definitive score and confidence level
+        1. Clear rationale using framework language ("strategic gap," "Better Together," etc.)
+        2. Comparison to framework benchmark examples (referenced above)
+        3. Specific evidence of complementary vs competitive positioning
+        4. Hackathon integration feasibility assessment
         
         Format your response EXACTLY as:
-        ANALYSIS: [Your detailed analysis here]
+        ANALYSIS: [Your detailed framework-aligned analysis here, referencing benchmarks]
         SCORE: [+1 (Strong Yes), 0 (Neutral/Unclear), or -1 (Strong No)]
         CONFIDENCE: [High/Medium/Low]
         """

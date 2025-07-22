@@ -53,6 +53,9 @@ multi_agent_analyses_*.json
 project_analyses_export_*.json
 *.json.backup
 
+# Partnership framework - private evaluations (like .env)
+agents/partnership_benchmarks.json
+
 # Logs
 *.log
 logs/

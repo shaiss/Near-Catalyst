@@ -6,7 +6,7 @@ Agent 8: Synthesizes all research and question analyses into a final recommendat
 Generates comprehensive partnership evaluation reports.
 """
 
-from .config import DIAGNOSTIC_QUESTIONS, TIMEOUTS, SCORE_THRESHOLDS, RECOMMENDATIONS
+from .config import DIAGNOSTIC_QUESTIONS, TIMEOUTS, SCORE_THRESHOLDS, RECOMMENDATIONS, load_partnership_benchmarks
 
 
 class SummaryAgent:
@@ -34,6 +34,9 @@ class SummaryAgent:
         """
         print(f"  Generating final summary...")
         
+        # Load partnership benchmarks
+        benchmarks = load_partnership_benchmarks()
+        
         # Prepare question results summary
         results_summary = []
         total_score = 0
@@ -50,27 +53,55 @@ Analysis: {result['analysis'][:500]}...
         # Generate recommendation based on score thresholds
         recommendation = self._generate_recommendation(total_score)
         
+        # Format benchmark examples for summary
+        complementary_examples = [f"{ex['partner']} ({ex['score']:+d})" for ex in benchmarks["framework_benchmarks"]["complementary_examples"]]
+        competitive_examples = [f"{ex['partner']} ({ex['score']:+d})" for ex in benchmarks["framework_benchmarks"]["competitive_examples"]]
+        
         summary_prompt = f"""
-        Create a comprehensive partnership analysis summary for {project_name} and NEAR Protocol.
+        Apply the "1+1=3" Partnership Framework to generate a comprehensive evaluation of {project_name} as a NEAR Protocol partner.
+        
+        FRAMEWORK CONTEXT: You are using the established framework that evaluates complementary partners (like {', '.join(complementary_examples)}) versus competitive/misaligned partners (like {', '.join(competitive_examples)}). The goal is to find partners that create exponential value when combined with NEAR Protocol.
         
         PROJECT RESEARCH:
         {general_research[:2000]}
         
-        QUESTION-BY-QUESTION ANALYSIS:
+        SIX-QUESTION DIAGNOSTIC ANALYSIS:
         {"".join(results_summary)}
         
-        TOTAL SCORE: {total_score}/6
+        TOTAL FRAMEWORK SCORE: {total_score}/6
         
-        Please provide:
-        1. A structured table with all 6 questions, scores, and concise rationales
-        2. The total score and recommendation based on these thresholds:
-           - +4 to +6: "Green-light partnership. Strong candidate for strategic collaboration."
-           - 0 to +3: "Solid mid-tier fit. Worth pursuing, but may require integration polish or focused support."
-           - < 0: "Likely misaligned. Proceed with caution or decline, as it may create friction."
-        3. Key strengths and potential concerns
-        4. Specific next steps or recommendations
+        Generate a partnership evaluation using framework methodology:
         
-        Follow the format from the system prompt framework.
+        1. **Partnership Diagnostic Table**: 
+           Present all 6 framework questions with scores and rationales using framework language:
+           - Gap-Filler? (strategic gap vs overlap)
+           - New Proof-Points? (unlock joint use-cases)
+           - Clear Story? ("Better Together" one-sentence pitch)
+           - Shared Audience, Different Function? (same devs, different workflow steps)
+           - Low-Friction Integration? (wire together in hours)
+           - Hands-On Support? (mentors, bounties, tooling)
+        
+        2. **Framework Classification**:
+           Compare to benchmark examples:
+           • Complementary Partners ({', '.join(complementary_examples)}): Fill strategic gaps, unlock new use-cases
+           • Competitive Partners ({', '.join(competitive_examples)}): Create either/or choices, overlap core functions
+           
+        3. **"1+1=3" Value Assessment**:
+           - What exponential value does this partnership unlock?
+           - Does this create capabilities neither platform can deliver alone?
+           - Is there a clear "Better Together" narrative without diagrams?
+        
+        4. **Partnership Recommendation** (using framework thresholds):
+           - **+4 to +6**: "Strong candidate; explore MoU/co-marketing" 
+           - **0 to +3**: "Mixed; negotiate scope"
+           - **< 0**: "Decline or redesign the collaboration"
+        
+        5. **Implementation Roadmap**: 
+           - Specific next steps for NEAR partnership team
+           - Integration requirements and hackathon readiness
+           - Potential collaboration models (co-marketing, joint bounties, etc.)
+        
+        Use framework terminology throughout: "strategic gap," "Better Together," "exponential value," "complementary vs competitive."
         """
         
         try:
@@ -102,9 +133,9 @@ Analysis: {result['analysis'][:500]}...
     
     def _generate_recommendation(self, total_score):
         """Generate recommendation based on score thresholds."""
-        if total_score >= SCORE_THRESHOLDS['green_light']:
-            return RECOMMENDATIONS['green_light']
-        elif total_score >= SCORE_THRESHOLDS['mid_tier']:
-            return RECOMMENDATIONS['mid_tier']
+        if total_score >= SCORE_THRESHOLDS['strong_candidate']:
+            return RECOMMENDATIONS['strong_candidate']
+        elif total_score >= SCORE_THRESHOLDS['mixed_fit']:
+            return RECOMMENDATIONS['mixed_fit']
         else:
             return RECOMMENDATIONS['decline'] 

@@ -1,0 +1,89 @@
+{
+  "_comment": "NEAR Partnership Framework Benchmarks - Copy to partnership_benchmarks.json and customize with your real evaluations",
+  "_usage": "This file contains generic examples. Replace with your actual partnership evaluations in the gitignored partnership_benchmarks.json file.",
+  "_warning": "DO NOT commit real partnership examples - keep them in the gitignored file only",
+  
+  "framework_benchmarks": {
+    "complementary_examples": [
+      {
+        "partner": "NEAR + [Confidential Computing Partner]",
+        "score": 6,
+        "type": "privacy/compute layer",
+        "description": "perfect complementary partner"
+      },
+      {
+        "partner": "NEAR + [Storage Solution]", 
+        "score": 6,
+        "type": "decentralized storage",
+        "description": "strategic gap filler"
+      },
+      {
+        "partner": "NEAR + [Oracle Provider]",
+        "score": 3,
+        "type": "data feeds",
+        "description": "solid but needs integration work"
+      },
+      {
+        "partner": "NEAR + [Infrastructure Service]",
+        "score": 2,
+        "type": "developer tooling",
+        "description": "worth pursuing with focused support"
+      }
+    ],
+    "competitive_examples": [
+      {
+        "partner": "NEAR + [Competing L1-A]",
+        "score": -4,
+        "type": "competing blockchain", 
+        "description": "competitive overlap, misaligned"
+      },
+      {
+        "partner": "NEAR + [Competing L1-B]",
+        "score": -3,
+        "type": "competing platform",
+        "description": "confusing either/or choice"
+      },
+      {
+        "partner": "NEAR + [Overlapping Service]",
+        "score": -1,
+        "type": "feature overlap",
+        "description": "competes for same developers"
+      }
+    ]
+  },
+  "framework_principles": {
+    "complementary_signs": [
+      "Fills a strategic gap",
+      "Unlocks new use cases", 
+      "Clear 'Better Together' story",
+      "Same developers, different workflow functions",
+      "Low-friction integration",
+      "Hands-on support"
+    ],
+    "competitive_red_flags": [
+      "Direct product overlap",
+      "Either/or choice for developers",
+      "Vague value proposition",
+      "Conflicting technical standards",
+      "Complex integration requirements",
+      "Logo on a slide partnerships"
+    ]
+  },
+  "scoring_guidance": {
+    "strong_candidate": {
+      "range": "+4 to +6",
+      "action": "explore MoU/co-marketing",
+      "examples": ["Strategic gap fillers", "Clear complementary value"]
+    },
+    "mixed_fit": {
+      "range": "0 to +3", 
+      "action": "negotiate scope",
+      "examples": ["Needs integration work", "Moderate alignment"]
+    },
+    "decline": {
+      "range": "< 0",
+      "action": "decline or redesign collaboration", 
+      "examples": ["Competitive overlap", "Either/or confusion"]
+    }
+  }
+} 

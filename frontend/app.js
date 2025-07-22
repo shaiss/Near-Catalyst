@@ -33,6 +33,32 @@ class PartnershipDashboard {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') this.closeModal();
         });
+
+        // Tab navigation
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab-btn') || e.target.closest('.tab-btn')) {
+                const tabBtn = e.target.closest('.tab-btn') || e.target;
+                const tabId = tabBtn.dataset.tab;
+                this.switchTab(tabId);
+            }
+        });
+
+        // Accordion functionality
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('accordion-header') || e.target.closest('.accordion-header')) {
+                const header = e.target.closest('.accordion-header') || e.target;
+                this.toggleAccordion(header);
+            }
+        });
+
+        // Question overview card clicks
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('question-overview-card') || e.target.closest('.question-overview-card')) {
+                const card = e.target.closest('.question-overview-card') || e.target;
+                const questionId = card.dataset.questionId;
+                this.expandQuestionAccordion(questionId);
+            }
+        });
     }
 
     async loadData() {
@@ -303,27 +329,11 @@ class PartnershipDashboard {
         document.getElementById('modal-recommendation').textContent = 
             project.recommendation || 'No recommendation available';
 
-        // Render question breakdown
-        const questionsContainer = document.getElementById('questions-breakdown');
-        if (details && details.question_analyses) {
-            questionsContainer.innerHTML = details.question_analyses.map(q => {
-                const scoreClass = this.getScoreClass(q.score);
-                return `
-                    <div class="question-item ${scoreClass}">
-                        <div class="question-header">
-                            <span class="question-title">Q${q.question_id}: ${this.getQuestionTitle(q.question_id)}</span>
-                            <span class="question-score ${scoreClass}">
-                                ${q.score >= 0 ? '+' : ''}${q.score}
-                            </span>
-                        </div>
-                        <div class="question-confidence">Confidence: ${q.confidence}</div>
-                        <div class="question-text">${this.formatText(this.truncateText(q.analysis, 300))}</div>
-                    </div>
-                `;
-            }).join('');
-        } else {
-            questionsContainer.innerHTML = '<p>Question analysis not available</p>';
-        }
+        // Render questions overview grid
+        this.renderQuestionsOverview(details?.question_analyses || []);
+        
+        // Render detailed questions accordion
+        this.renderQuestionsAccordion(details?.question_analyses || []);
 
         // Render research summary
         document.getElementById('research-summary').innerHTML = 
@@ -333,9 +343,119 @@ class PartnershipDashboard {
         document.getElementById('final-analysis').innerHTML = 
             this.renderStructuredContent(project.final_summary, 'Final analysis not available');
 
+        // Reset to first tab
+        this.switchTab('questions');
+
         // Show modal
         modal.classList.add('active');
         document.body.style.overflow = 'hidden';
+    }
+
+    renderQuestionsOverview(questionAnalyses) {
+        const grid = document.getElementById('questions-grid');
+        
+        if (!questionAnalyses || questionAnalyses.length === 0) {
+            grid.innerHTML = '<div class="no-data">No question analysis available</div>';
+            return;
+        }
+
+        grid.innerHTML = questionAnalyses.map(q => {
+            const scoreClass = this.getScoreClass(q.score);
+            return `
+                <div class="question-overview-card ${scoreClass}" data-question-id="${q.question_id}">
+                    <div class="question-card-header">
+                        <div class="question-card-title">Q${q.question_id}: ${this.getQuestionTitle(q.question_id)}</div>
+                        <div class="question-card-score ${scoreClass}">
+                            ${q.score >= 0 ? '+' : ''}${q.score}
+                        </div>
+                    </div>
+                    <div class="question-card-confidence">Confidence: ${q.confidence}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderQuestionsAccordion(questionAnalyses) {
+        const accordion = document.getElementById('questions-breakdown');
+        
+        if (!questionAnalyses || questionAnalyses.length === 0) {
+            accordion.innerHTML = '<div class="no-data">No detailed analysis available</div>';
+            return;
+        }
+
+        accordion.innerHTML = questionAnalyses.map(q => {
+            const scoreClass = this.getScoreClass(q.score);
+            return `
+                <div class="accordion-item" data-question-id="${q.question_id}">
+                    <div class="accordion-header ${scoreClass}">
+                        <div class="accordion-title">Q${q.question_id}: ${this.getQuestionTitle(q.question_id)}</div>
+                        <div class="accordion-meta">
+                            <div class="accordion-score ${scoreClass}">
+                                ${q.score >= 0 ? '+' : ''}${q.score}
+                            </div>
+                            <div class="accordion-toggle">
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="accordion-body">
+                            <div style="margin-bottom: 12px;">
+                                <strong>Confidence:</strong> ${q.confidence}
+                            </div>
+                            <div>${this.formatText(q.analysis || 'No detailed analysis available')}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    switchTab(tabId) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+
+        // Update tab panes
+        document.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.toggle('active', pane.id === `${tabId}-tab`);
+        });
+    }
+
+    toggleAccordion(header) {
+        const content = header.nextElementSibling;
+        const isExpanded = header.classList.contains('expanded');
+
+        if (isExpanded) {
+            header.classList.remove('expanded');
+            content.classList.remove('expanded');
+        } else {
+            header.classList.add('expanded');
+            content.classList.add('expanded');
+        }
+    }
+
+    expandQuestionAccordion(questionId) {
+        // First switch to questions tab if not already active
+        this.switchTab('questions');
+
+        // Find and expand the accordion item
+        setTimeout(() => {
+            const accordionItem = document.querySelector(`[data-question-id="${questionId}"]`);
+            if (accordionItem) {
+                const header = accordionItem.querySelector('.accordion-header');
+                const content = accordionItem.querySelector('.accordion-content');
+                
+                if (header && content) {
+                    header.classList.add('expanded');
+                    content.classList.add('expanded');
+                    
+                    // Scroll to the expanded item
+                    accordionItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }, 100); // Small delay to ensure tab switch completes
     }
 
     getQuestionTitle(questionId) {
