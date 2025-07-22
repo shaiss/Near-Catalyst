@@ -1,0 +1,70 @@
+# Database Patterns and Threading Guidelines
+
+## SQLite Threading Rules
+**CRITICAL**: SQLite objects (connections, cursors) cannot be shared between threads.
+
+### Thread-Safe Database Access
+```python
+# ✅ CORRECT: Each thread creates its own connection
+def worker_function(db_path):
+    conn = sqlite3.connect(db_path)
+    conn.execute('PRAGMA journal_mode=WAL;')
+    cursor = conn.cursor()
+    try:
+        # Do database work
+        conn.commit()
+    finally:
+        conn.close()
+
+# ❌ WRONG: Sharing connection between threads
+# def worker_function(shared_cursor):  # This will fail!
+```
+
+### Database Configuration ([database/database_manager.py](mdc:database/database_manager.py))
+Always apply these SQLite optimizations:
+```python
+conn.execute('PRAGMA journal_mode=WAL;')     # Enables concurrent reads/writes
+conn.execute('PRAGMA synchronous=NORMAL;')   # Balanced safety/performance
+conn.execute('PRAGMA cache_size=10000;')     # Large cache for better performance
+conn.execute('PRAGMA temp_store=memory;')    # Use memory for temp storage
+```
+
+### Concurrent Access Patterns
+- **WAL Mode**: Enables multiple readers + one writer
+- **Retry Logic**: Implement exponential backoff for database locks
+- **Connection Management**: Always use try/finally blocks
+- **Project-Specific Caching**: Use unique cache keys to prevent data poisoning
+
+### Error Handling
+```python
+max_retries = 3
+for attempt in range(max_retries):
+    try:
+        cursor.execute(sql, params)
+        break
+    except sqlite3.OperationalError as e:
+        if "database is locked" in str(e) and attempt < max_retries - 1:
+            time.sleep(0.1 * (attempt + 1))  # Exponential backoff
+            continue
+        else:
+            print(f"Database error, attempt {attempt + 1}: {e}")
+            break
+```
+
+### Schema Design Principles
+- **Foreign Key Constraints**: Maintain referential integrity
+- **Appropriate Indexes**: On frequently queried columns
+- **JSON Storage**: For complex nested data (sources, metadata)
+- **Timestamp Tracking**: created_at and updated_at for all entities
+
+### Parallel Execution Guidelines
+When using ThreadPoolExecutor for database operations:
+1. **Pass database path**, not connection objects
+2. **Create connections per thread**
+3. **Use proper timeout values**
+4. **Handle exceptions gracefully**
+5. **Implement retry mechanisms**
+description:
+globs:
+alwaysApply: false
+---

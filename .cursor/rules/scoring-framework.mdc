@@ -1,0 +1,94 @@
+# Partnership Scoring Framework
+
+## Overview
+The NEAR Partnership Analysis system evaluates potential technical partners using a 6-question diagnostic framework. Each question receives a score from -1 to +1, creating a total score range of -6 to +6.
+
+## Diagnostic Questions ([agents/config.py](mdc:agents/config.py))
+
+### Q1: Gap-Filler? 
+**Description**: Does the partner fill a technology gap NEAR lacks?
+**Search Focus**: Technical capabilities, infrastructure, services that NEAR doesn't provide natively
+**Scoring**:
+- +1: Fills critical gaps with proven technology
+- 0: Some gaps filled but not essential or unproven
+- -1: No gaps filled or duplicates NEAR's capabilities
+
+### Q2: New Proof-Points?
+**Description**: Does it enable new use cases/demos?
+**Search Focus**: Use cases, applications, demos, innovative implementations
+**Scoring**:
+- +1: Enables compelling new use cases and demos
+- 0: Some new possibilities but limited or unclear
+- -1: No new use cases or very limited scope
+
+### Q3: One-Sentence Story?
+**Description**: Is there a clear value proposition?
+**Search Focus**: Value proposition, messaging, developer experience, integration benefits
+**Scoring**:
+- +1: Crystal clear, compelling value story
+- 0: Somewhat clear but requires explanation
+- -1: Unclear or confusing value proposition
+
+### Q4: Developer-Friendly?
+**Description**: Easy integration and learning curve?
+**Search Focus**: Documentation, APIs, SDKs, developer tools, integration guides, tutorials
+**Scoring**:
+- +1: Excellent docs, easy integration, great DX
+- 0: Decent docs but some friction
+- -1: Poor docs, difficult integration
+
+### Q5: Aligned Incentives?
+**Description**: Mutual benefit and non-competitive?
+**Search Focus**: Business model, partnerships, competition analysis, ecosystem positioning
+**Scoring**:
+- +1: Strong mutual benefit, clearly non-competitive
+- 0: Some alignment but potential conflicts
+- -1: Competitive or misaligned incentives
+
+### Q6: Ecosystem Fit?
+**Description**: Does it match NEAR's target audience?
+**Search Focus**: Target audience, developer community, use cases that overlap with NEAR ecosystem
+**Scoring**:
+- +1: Perfect audience match and ecosystem synergy
+- 0: Some overlap but not ideal fit
+- -1: Different audience or poor ecosystem fit
+
+## Final Recommendations
+
+### Score Thresholds ([agents/config.py](mdc:agents/config.py))
+```python
+SCORE_THRESHOLDS = {
+    'green_light': 4,      # +4 to +6: Strong partnership candidate
+    'mid_tier': 0,         # 0 to +3: Solid fit, worth pursuing
+    'decline': None        # < 0: Likely misaligned
+}
+```
+
+### Recommendation Messages
+- **🟢 Green-light (4-6)**: "Green-light partnership. Strong candidate for strategic collaboration."
+- **🟡 Mid-tier (0-3)**: "Solid mid-tier fit. Worth pursuing, but may require integration polish or focused support."
+- **🔴 Decline (<0)**: "Likely misaligned. Proceed with caution or decline, as it may create friction."
+
+## Implementation Notes
+
+### Confidence Levels
+Each agent also provides a confidence level:
+- **High**: Very confident in the analysis
+- **Medium**: Reasonably confident but some uncertainty
+- **Low**: Limited information or unclear indicators
+
+### Score Extraction ([agents/question_agent.py](mdc:agents/question_agent.py))
+The system parses LLM responses for:
+```
+SCORE: [+1 (Strong Yes), 0 (Neutral/Unclear), or -1 (Strong No)]
+CONFIDENCE: [High/Medium/Low]
+```
+
+### Frontend Visualization ([frontend/](mdc:frontend/))
+- Color coding: Green (high scores), Yellow (medium), Red (low)
+- Interactive filtering by score ranges
+- Detailed breakdown showing individual question scores
+description:
+globs:
+alwaysApply: false
+---

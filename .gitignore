@@ -1,14 +1,11 @@
-# Environment Variables
+# NEAR Partnership Analysis - Git Ignore Rules
+
+# Environment and sensitive files
 .env
 .env.local
-.env.development
-.env.test
 .env.production
-
-# OpenAI API Keys and Secrets
 *.key
-secrets/
-config/local.py
+*.pem
 
 # Python
 __pycache__/
@@ -28,68 +25,49 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Virtual Environments
+# Virtual environments
 venv/
 env/
 ENV/
-env.bak/
-venv.bak/
 .venv/
+.ENV/
 
-# PyCharm
-.idea/
-*.iws
-*.iml
-*.ipr
-
-# VS Code
-.vscode/
-*.code-workspace
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Database Files
+# Database files
 *.db
 *.sqlite
 *.sqlite3
 project_analyses*.db
 *.db-journal
+*.db-wal
+*.db-shm
 
-# Export Files (keep one example, ignore timestamped exports)
+# Export files
 multi_agent_analyses_*.json
 project_analyses_export_*.json
-enhanced_project_analyses_*.json
-!multi_agent_analyses_example.json
+*.json.backup
 
 # Logs
 *.log
 logs/
-.logs/
+log/
 
-# Temporary Files
-*.tmp
-*.temp
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 
-# Cache
-.cache/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Backup Files
-*.bak
-*.backup
-*~
-
-# OS Generated Files
+# OS files
 .DS_Store
 .DS_Store?
 ._*
@@ -98,37 +76,45 @@ htmlcov/
 ehthumbs.db
 Thumbs.db
 
-# Archives and Compressed Files (unless intentional)
-*.zip
-*.tar.gz
-*.rar
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
 
-# Large Data Files
-data/
-datasets/
-*.csv
-*.xlsx
-*.json
-!prompt.md
-!README.md
-!requirements.txt
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
 
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
+# Documentation builds
+docs/_build/
+site/
 
-# Git
-.git/
-*.orig
-
-# Node.js (if any)
+# Node.js (if adding any JS build tools)
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Misc
-.mypy_cache/
-.dmypy.json
-dmypy.json 
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Test files
+test_*.py
+*_test.py
+tests/output/
+
+# Archive (keep structure but ignore large files)
+archive/*.db
+archive/*.json 

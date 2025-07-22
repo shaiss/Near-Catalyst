@@ -1,0 +1,50 @@
+# Glass UI Frontend Guidelines
+
+## Design System
+This frontend uses **Glassmorphism** design principles with a sophisticated glass-like aesthetic.
+
+### Core Glass UI Principles
+- **Translucent backgrounds** with `backdrop-filter: blur()` effects
+- **Layered depth** using multiple glass panels and shadows
+- **Gradient borders** and subtle color overlays
+- **Smooth animations** and hover transitions
+- **Responsive design** that adapts gracefully across devices
+
+### Browser Compatibility
+- **Always include `-webkit-backdrop-filter`** prefixes for Safari compatibility
+- **Test blur effects** across Chrome, Safari, and Firefox
+- **Provide fallbacks** for browsers that don't support backdrop-filter
+
+### Color Palette ([frontend/styles.css](mdc:frontend/styles.css))
+- **Primary gradient**: Linear gradient from #667eea to #764ba2
+- **Glass panels**: rgba(255, 255, 255, 0.1) with backdrop blur
+- **Text hierarchy**: White primary, rgba(255,255,255,0.8) secondary
+- **Accent colors**: Success (#10b981), warning (#f59e0b), error (#ef4444)
+
+### Modal Design Patterns
+- **90% page width** with max-width: 1200px for large content
+- **Two-column grid** (1.2fr 0.8fr) for desktop, stacked on mobile
+- **Independent scrolling** columns with max-height: 70vh
+- **Responsive breakpoints** at 1024px and 768px
+
+### Component Structure ([frontend/index.html](mdc:frontend/index.html))
+- **Header**: Fixed glass header with title and stats
+- **Filters**: Translucent filter bar with search and controls
+- **Content**: Card grid or table view with smooth transitions
+- **Modal**: Full-screen overlay with detailed content
+
+### JavaScript Patterns ([frontend/app.js](mdc:frontend/app.js))
+- **Structured content rendering** with markdown-to-HTML conversion
+- **Real-time filtering** and search with debouncing
+- **Data fetching** with loading states and error handling
+- **Responsive design** detection and layout adjustments
+
+### Performance Considerations
+- **Optimize blur effects** for mobile devices
+- **Use transform3d** for hardware acceleration
+- **Minimize reflows** during animations
+- **Lazy load** heavy content in modals
+description:
+globs:
+alwaysApply: false
+---

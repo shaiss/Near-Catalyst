@@ -1,0 +1,73 @@
+# NEAR Partnership Analysis - Multi-Agent System
+
+## Project Overview
+This is a sophisticated multi-agent AI system that analyzes potential technical partners for NEAR Protocol hackathons and developer events. The system implements a "Framework for Choosing Complementary Technical Partners" to identify collaborators that create "1 + 1 = 3" value propositions.
+
+## System Architecture
+
+### Entry Points
+- **Main Analysis Script**: [analyze_projects_multi_agent_v2.py](mdc:analyze_projects_multi_agent_v2.py) - Modular, well-documented orchestrator
+- **Legacy Script**: [analyze_projects_multi_agent.py](mdc:analyze_projects_multi_agent.py) - Original monolithic version (should be refactored/deprecated)
+- **Web Dashboard**: [server.py](mdc:server.py) - Flask backend serving Glass UI frontend
+
+### Core Components
+
+#### Agents Package ([agents/](mdc:agents/))
+- **config.py**: All configuration constants, diagnostic questions, API endpoints, timeouts
+- **research_agent.py**: Agent 1 - Gathers comprehensive project information via web search
+- **question_agent.py**: Agents 2-7 - Parallel analysis of 6 diagnostic questions with project-specific caching
+- **summary_agent.py**: Agent 8 - Synthesizes all results into final recommendations
+
+#### Database Package ([database/](mdc:database/))
+- **database_manager.py**: SQLite operations, schema management, export functionality
+- Uses WAL mode for concurrent access, full traceability
+
+#### Frontend ([frontend/](mdc:frontend/))
+- **index.html**: Glass UI dashboard structure with responsive modal design
+- **styles.css**: Glassmorphism styling with Safari compatibility and 2-column modal layout
+- **app.js**: Data fetching, filtering, search, and structured content rendering
+
+### Key Technical Features
+- **Parallel Execution**: 6 question agents run simultaneously (4-6x speed improvement)
+- **Project-Specific Caching**: Prevents data poisoning between project analyses
+- **Thread-Safe Database**: SQLite WAL mode with retry logic for concurrent access
+- **Comprehensive Export**: Full traceability with sources, analyses, and scores
+- **24-Hour Freshness**: Automatic cache invalidation for recent analyses
+
+## Development Guidelines
+
+### When Modifying Agents
+- All agents are stateless and should remain independent
+- Use configuration from [agents/config.py](mdc:agents/config.py) for constants
+- Implement proper error handling and timeout management
+- Maintain project-specific caching in question agents
+
+### When Updating Database Schema
+- Modify [database/database_manager.py](mdc:database/database_manager.py)
+- Consider migration scripts for existing data
+- Test concurrent access scenarios
+
+### When Enhancing Frontend
+- Follow Glass UI design patterns in [frontend/styles.css](mdc:frontend/styles.css)
+- Ensure responsive design and Safari compatibility
+- Use structured content rendering in [frontend/app.js](mdc:frontend/app.js)
+
+### Required Dependencies
+- OpenAI API key in `.env` file (gpt-4.1 model with web search)
+- [prompt.md](mdc:prompt.md) system prompt framework
+- Python packages: openai, requests, flask, flask-cors, sqlite3, dotenv
+
+## API Integration
+- **NEAR Catalog API**: Fetches project data from api.nearcatalog.org
+- **OpenAI API**: Uses gpt-4.1 model with web_search_preview tool
+- **Web Search**: High context size for comprehensive research
+
+## Performance Optimizations
+- Parallel question agent execution (ThreadPoolExecutor with 6 workers)
+- Database connection pooling and WAL mode
+- Exponential backoff for database lock retries
+- Request timeouts and rate limiting
+description:
+globs:
+alwaysApply: false
+---

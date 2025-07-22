@@ -284,10 +284,6 @@ def question_agent(client, project_name, general_research, question_config, db_p
             "cached": False
         }
     
-    finally:
-        # Always close the database connection
-        conn.close()
-        
     except Exception as e:
         print(f"    ERROR: Q{question_id} analysis failed: {e}")
         return {
@@ -300,6 +296,10 @@ def question_agent(client, project_name, general_research, question_config, db_p
             "error": str(e),
             "cached": False
         }
+    
+    finally:
+        # Always close the database connection
+        conn.close()
 
 def summary_agent(client, project_name, general_research, question_results, system_prompt):
     """

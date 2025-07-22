@@ -1,264 +1,220 @@
-# NEAR Protocol Partnership Analysis
+# NEAR Partnership Analysis - Multi-Agent System
 
-A sophisticated multi-agent system for analyzing potential partnerships between NEAR Protocol and ecosystem projects using AI-powered research and evaluation.
+A sophisticated AI-powered system for analyzing potential technical partners for NEAR Protocol hackathons and developer events. Uses a multi-agent architecture to evaluate partnerships that create "1 + 1 = 3" value propositions.
 
-## 🚀 Overview
+## 🚀 Quick Start
 
-This project implements an 8-agent architecture that comprehensively evaluates partnership opportunities using the "Framework for Choosing Complementary Technical Partners." Each partnership is scored across 6 diagnostic questions to identify "1 + 1 = 3" value propositions.
-
-## 🏗️ Architecture
-
-### Multi-Agent System
-
-1. **Research Agent** - Conducts comprehensive project research using web search
-2. **Gap-Filler Agent** (Q1) - Analyzes technology gaps NEAR lacks
-3. **Proof-Points Agent** (Q2) - Evaluates new use cases and demos
-4. **Clear Story Agent** (Q3) - Assesses value proposition clarity
-5. **Developer-Friendly Agent** (Q4) - Reviews integration ease and learning curve
-6. **Aligned Incentives Agent** (Q5) - Examines mutual benefits and competition
-7. **Ecosystem Fit Agent** (Q6) - Matches target audience alignment
-8. **Summary Agent** - Synthesizes findings into final recommendations
-
-### Scoring Framework
-
-Each question receives a score:
-- **+1**: Strong/Yes
-- **0**: Neutral/Unsure  
-- **-1**: Weak/No
-
-**Final Recommendations:**
-- **+4 to +6**: Green-light partnership (Strong strategic collaboration candidate)
-- **0 to +3**: Mid-tier fit (Worth pursuing with integration support)
-- **< 0**: Likely misaligned (Proceed with caution)
-
-## 📊 Features
-
-- **Web Search Integration**: Real-time research using OpenAI's web search capabilities
-- **Glass UI Dashboard**: Beautiful, modern interface with glassmorphism design
-- **Interactive Filtering**: Filter by score range, search by project name
-- **Detailed Project Views**: Modal popups with full analysis breakdown
-- **Project-Specific Caching**: Prevents data poisoning between analyses
-- **Full Traceability**: Every conclusion linked to sources and evidence
-- **Confidence Scoring**: Each agent provides confidence levels
-- **Comprehensive Export**: JSON exports with complete audit trails
-- **Flexible Execution**: Research-only, questions-only, or full analysis modes
-
-## 🛠️ Setup
-
-### Prerequisites
-
-- Python 3.8+
-- OpenAI API key with GPT-4.1 access
-
-### Installation
-
-1. Clone and navigate to the project:
 ```bash
-git clone <repository-url>
-cd json-to-csv
-```
-
-2. Create and activate virtual environment:
-```bash
+# 1. Setup environment
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
 pip install -r requirements.txt
-```
 
-4. Create `.env` file with your OpenAI key:
-```bash
-echo "openai_key=your_openai_api_key_here" > .env
-```
+# 2. Configure OpenAI API
+echo "openai_key=your_api_key_here" > .env
 
-## 📖 Usage
+# 3. Run analysis
+python analyze_projects_multi_agent_v2.py --limit 5
 
-### Multi-Agent Analysis
-
-```bash
-# Test with 3 projects (recommended for first run)
-python analyze_projects_multi_agent.py --limit 3
-
-# Research phase only (faster, cheaper)
-python analyze_projects_multi_agent.py --limit 5 --research-only
-
-# Question analysis only (skip summary)
-python analyze_projects_multi_agent.py --limit 5 --questions-only
-
-# Force refresh cached data
-python analyze_projects_multi_agent.py --limit 3 --force-refresh
-
-# Process all projects (use with caution - expensive)
-python analyze_projects_multi_agent.py --limit 0
-```
-
-### Glass UI Dashboard
-
-After running the analysis, start the beautiful web dashboard:
-
-```bash
-# Start the dashboard server
+# 4. View results
 python server.py
-
-# Custom host/port
-python server.py --host 0.0.0.0 --port 8080
-
-# Debug mode
-python server.py --debug
-
-# Check database status
-python server.py --check-db
+# Open http://localhost:5000
 ```
 
-Then open your browser to `http://localhost:5000` to view the interactive dashboard.
+## 🏗️ System Architecture
 
-### Command Line Options
+### Multi-Agent Pipeline
+```
+📡 NEAR Catalog API → 🤖 Research Agent → 🔍 6x Question Agents (Parallel) → 📊 Summary Agent → 💾 Database
+                                                        ↓
+📈 Glass UI Dashboard ← 🌐 Flask API ← 📋 Comprehensive Export
+```
 
-- `--limit N`: Process N projects (0 = no limit)
-- `--research-only`: Only conduct general research
-- `--questions-only`: Skip final summary generation
-- `--force-refresh`: Ignore cache and refresh all data
+### Core Components
+
+#### 🎯 **Analysis Agents**
+- **Research Agent**: Gathers comprehensive project information via web search
+- **Question Agents (6x)**: Parallel analysis of diagnostic questions:
+  - Q1: Gap-Filler? (Technology gaps NEAR lacks)
+  - Q2: New Proof-Points? (Novel use cases/demos)
+  - Q3: One-Sentence Story? (Clear value proposition)
+  - Q4: Developer-Friendly? (Integration ease)
+  - Q5: Aligned Incentives? (Mutual benefit)
+  - Q6: Ecosystem Fit? (Target audience match)
+- **Summary Agent**: Synthesizes results into final recommendations
+
+#### 💾 **Data Layer**
+- **SQLite Database**: WAL mode for concurrent access
+- **Project-Specific Caching**: Prevents data poisoning
+- **24-Hour Freshness**: Automatic cache invalidation
+- **Full Traceability**: Sources, analyses, and scores
+
+#### 🎨 **Glass UI Frontend**
+- **Glassmorphism Design**: Modern translucent interface
+- **Responsive Layout**: Adapts to all screen sizes
+- **Real-Time Filtering**: Search and filter capabilities
+- **Detailed Modals**: Comprehensive project analysis views
 
 ## 📁 Project Structure
 
 ```
-.
-├── analyze_projects_multi_agent.py    # Main multi-agent script
-├── server.py                          # Flask dashboard server
-├── frontend/                          # Glass UI dashboard
-│   ├── index.html                     # Main dashboard page
-│   ├── styles.css                     # Glass UI styling
-│   └── app.js                         # Dashboard JavaScript
-├── prompt.md                          # Partnership evaluation framework
-├── project_analyses_multi_agent.db    # SQLite database with full traceability
-├── multi_agent_analyses_*.json        # Exported analysis results
-├── archive/                           # Legacy files and scripts
-├── venv/                              # Python virtual environment
-├── README.md                          # This file
-└── .env                              # Environment variables (not in git)
+📦 NEAR Partnership Analysis
+├── 🎯 analyze_projects_multi_agent_v2.py  # Main orchestrator
+├── 🏗️ agents/                            # AI agent modules
+│   ├── config.py                         # Configuration constants
+│   ├── research_agent.py                 # General research
+│   ├── question_agent.py                 # Question-specific analysis
+│   └── summary_agent.py                  # Final synthesis
+├── 💾 database/                          # Database management
+│   └── database_manager.py               # SQLite operations
+├── 🎨 frontend/                          # Glass UI dashboard
+│   ├── index.html                        # Dashboard structure
+│   ├── styles.css                        # Glassmorphism styling
+│   └── app.js                            # Frontend logic
+├── 🌐 server.py                          # Flask backend API
+├── 📋 prompt.md                          # LLM framework
+├── 🔧 .env                               # API keys
+└── 📚 archive/                           # Legacy files
 ```
 
-## 🗄️ Database Schema
+## 🚀 Performance Features
 
-### Tables
+### ⚡ **Parallel Execution**
+- **6x Speed Improvement**: Question agents run simultaneously
+- **ThreadPoolExecutor**: Optimal resource utilization
+- **Timeout Protection**: Graceful failure handling
 
-1. **project_research**: General project information and web search results
-2. **question_analyses**: Question-specific research and scoring (with caching)
-3. **final_summaries**: Comprehensive partnership recommendations
+### 🧠 **Smart Caching**
+- **Project-Specific Keys**: Prevents data contamination
+- **Freshness Checks**: 24-hour automatic invalidation
+- **Thread-Safe Operations**: WAL mode with retry logic
 
-### Caching Strategy
-
-- Project-specific cache keys prevent data contamination
-- 24-hour cache expiration for fresh analysis
-- Granular caching per question for efficiency
-
-## 📈 Output Format
-
-### JSON Export Structure
-
-```json
-{
-  "project_name": "Example Project",
-  "slug": "example-project",
-  "total_score": 4,
-  "recommendation": "Green-light partnership...",
-  "general_research": "Comprehensive project overview...",
-  "general_sources": [{"url": "...", "title": "..."}],
-  "question_analyses": [
-    {
-      "question_id": 1,
-      "question_key": "gap_filler",
-      "analysis": "Detailed analysis...",
-      "score": 1,
-      "confidence": "High",
-      "sources": [...]
-    }
-  ],
-  "final_summary": "Partnership analysis summary...",
-  "created_at": "2025-01-07T19:41:58"
-}
-```
-
-## 💰 Cost Considerations
-
-- **Research Agent**: ~$0.01-0.05 per project (web search + GPT-4.1)
-- **Question Agents**: ~$0.005-0.02 per question (6 total)
-- **Summary Agent**: ~$0.01 per project
-- **Total**: ~$0.08-0.18 per project
-
-**Cost Optimization:**
-- Use `--research-only` for initial exploration
-- Leverage caching for repeated analyses
-- Set appropriate `--limit` for budget control
+### 🎯 **Comprehensive Analysis**
+- **Web Search Integration**: OpenAI's latest search capabilities
+- **Full Traceability**: Every source and decision tracked
+- **Structured Export**: JSON with complete analysis pipeline
 
 ## 🔧 Configuration
 
-### OpenAI Models Used
-
-- **Web Search**: GPT-4.1 with web search preview
-- **Analysis**: GPT-4.1 for consistency and quality
-- **Fallback**: Basic project info if web search fails
-
-### Rate Limiting
-
-- 1-second delay between question agents
-- 2-second delay between projects
-- 3-second delay after complete analysis
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **OpenAI API Key Error**
-   ```bash
-   ERROR: OpenAI key not found in .env file
-   ```
-   - Ensure `.env` file exists with `openai_key=your_key`
-
-2. **Database Lock Error**
-   - Close any open database connections
-   - Restart the script
-
-3. **Rate Limit Errors**
-   - Increase delays in the script
-   - Use smaller `--limit` values
-
-### Debug Mode
-
-Enable verbose logging by modifying the script:
-```python
-# Add at the top of main()
-import logging
-logging.basicConfig(level=logging.DEBUG)
+### Environment Variables (`.env`)
+```bash
+openai_key=your_openai_api_key_here
 ```
 
-## 🤝 Contributing
+### Command Line Options
+```bash
+python analyze_projects_multi_agent_v2.py [OPTIONS]
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make changes and test thoroughly
-4. Submit a pull request with detailed description
+Options:
+  --limit N             Process only N projects (0 for unlimited)
+  --research-only       Only run general research agent
+  --questions-only      Only run question agents (skip summary)
+  --force-refresh       Ignore cache and refresh all data
+```
 
-## 📜 License
+## 📊 Output
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Database Tables
+- **project_research**: General research with sources
+- **question_analyses**: Detailed question-by-question analysis
+- **final_summaries**: Partnership recommendations and scores
 
-## 🔗 Related Projects
+### Export Format
+```json
+{
+  "project_name": "Example Project",
+  "total_score": 4,
+  "recommendation": "Green-light partnership",
+  "general_research": "...",
+  "question_analyses": [...],
+  "final_summary": "...",
+  "created_at": "2024-01-15T10:30:00"
+}
+```
 
-- [NEAR Protocol](https://near.org/) - The blockchain platform
-- [NEAR Catalog](https://nearcatalog.org/) - Project discovery platform
-- [OpenAI API](https://openai.com/api/) - AI capabilities
+## 🎨 Glass UI Dashboard
 
-## 📞 Support
+### Features
+- **Real-Time Search**: Filter projects by name, score, or recommendation
+- **Multiple Views**: Card grid and table layouts
+- **Detailed Modals**: Two-column responsive design with independent scrolling
+- **Score Visualization**: Color-coded partnership recommendations
+- **Export Controls**: Download filtered results
 
-For questions or issues:
-1. Check the troubleshooting section above
-2. Review the `archive/` folder for legacy implementations
-3. Open an issue with detailed error messages and steps to reproduce
+### Score System
+- **🟢 Green (4-6)**: Strong partnership candidate
+- **🟡 Yellow (0-3)**: Mid-tier fit, worth pursuing
+- **🔴 Red (<0)**: Likely misaligned, proceed with caution
+
+## 🔄 Development Workflow
+
+### Adding New Diagnostic Questions
+1. Update `agents/config.py` → `DIAGNOSTIC_QUESTIONS`
+2. Restart analysis for fresh evaluation
+3. Update frontend scoring logic if needed
+
+### Modifying Analysis Logic
+1. Edit respective agent in `agents/` directory
+2. Maintain stateless design patterns
+3. Test parallel execution scenarios
+
+### Enhancing Frontend
+1. Follow Glass UI patterns in `frontend/styles.css`
+2. Ensure Safari compatibility with `-webkit-` prefixes
+3. Test responsive design across devices
+
+## 🛠️ Dependencies
+
+### Required Packages
+```bash
+pip install openai requests flask flask-cors python-dotenv
+```
+
+### API Requirements
+- **OpenAI API**: GPT-4.1 model with web search capabilities
+- **NEAR Catalog API**: Public API for project data
+
+## 🎯 Scoring Framework
+
+Each partnership candidate is evaluated on 6 diagnostic questions, with scores ranging from -1 (weak) to +1 (strong):
+
+1. **Gap-Filler**: Does it fill technology gaps NEAR lacks?
+2. **New Proof-Points**: Does it enable novel use cases/demos?
+3. **Clear Story**: Is there a compelling value proposition?
+4. **Developer-Friendly**: How easy is integration?
+5. **Aligned Incentives**: Is it mutually beneficial?
+6. **Ecosystem Fit**: Does it match NEAR's audience?
+
+**Total Score Interpretation**:
+- **4-6**: 🟢 Green-light partnership (strategic collaboration)
+- **0-3**: 🟡 Mid-tier fit (worth pursuing with support)
+- **<0**: 🔴 Likely misaligned (proceed with caution)
+
+## 🔍 Troubleshooting
+
+### SQLite Threading Errors
+- Each thread creates its own database connection
+- Use WAL mode for concurrent access
+- Implement retry logic with exponential backoff
+
+### API Rate Limits
+- Built-in timeouts and delays between requests
+- Graceful failure handling for individual agents
+- Comprehensive error logging
+
+### Frontend Issues
+- Ensure `-webkit-backdrop-filter` for Safari
+- Test glassmorphism effects across browsers
+- Verify responsive modal behavior
+
+## 📈 Future Enhancements
+
+- **Machine Learning Models**: Predictive partnership success scoring
+- **Integration APIs**: Direct connections to partner platforms
+- **Advanced Visualizations**: Network graphs and trend analysis
+- **Automated Reporting**: Scheduled analysis and notifications
 
 ---
 
-**Built with ❤️ for the NEAR Protocol ecosystem** 
+**Built for NEAR Protocol Partnership Development**  
+*Identifying technical collaborators that create exponential value* 🚀 
