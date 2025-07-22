@@ -98,34 +98,110 @@ from database import DatabaseManager
 
 
 def setup_environment():
-    """
-    Initialize environment and validate dependencies.
-    
-    Returns:
-        OpenAI: Configured OpenAI client
-        str: System prompt content
-    """
-    # Load environment variables from .env file
+    """Load environment variables and check OpenAI API key"""
     load_dotenv()
-    openai_key = os.getenv('openai_key')
-    if not openai_key:
-        print("ERROR: OpenAI key not found in .env file")
-        print("Please create a .env file with: openai_key=your_api_key_here")
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        print("❌ Error: OPENAI_API_KEY not found in .env file")
         sys.exit(1)
-
+    
     # Initialize OpenAI client
-    client = OpenAI(api_key=openai_key)
+    client = OpenAI(api_key=api_key)
 
     # Load system prompt framework
     try:
         with open('prompt.md', 'r', encoding='utf-8') as f:
             system_prompt = f.read()
     except FileNotFoundError:
-        print("ERROR: prompt.md file not found")
+        print("❌ Error: prompt.md file not found")
         print("This file contains the partnership evaluation framework.")
         sys.exit(1)
     
     return client, system_prompt
+
+
+def fetch_full_project_details(project_slug):
+    """
+    Fetch comprehensive project details from NEAR Catalog API.
+    This provides rich context for the research agent.
+    
+    Args:
+        project_slug (str): Project slug/identifier
+        
+    Returns:
+        dict: Full project details or basic fallback data
+    """
+    try:
+        print(f"    📋 Fetching project details from NEAR catalog...")
+        catalog_url = f"https://api.nearcatalog.org/project?pid={project_slug}"
+        response = requests.get(catalog_url, timeout=30)
+        
+        if response.status_code == 200:
+            catalog_data = response.json()
+            print(f"    ✓ Retrieved comprehensive project data from NEAR catalog")
+            return catalog_data
+        else:
+            print(f"    ⚠️ NEAR catalog returned {response.status_code}, using basic data")
+            return None
+            
+    except Exception as e:
+        print(f"    ⚠️ Could not fetch NEAR catalog data: {e}")
+        return None
+
+
+def create_enriched_project_context(project_name, project_basic_data, catalog_data=None):
+    """
+    Create enriched project context by combining basic NEAR list data with full catalog details.
+    This gives the research agent much richer context to work with.
+    
+    Args:
+        project_name (str): Project name
+        project_basic_data (dict): Basic data from NEAR project list
+        catalog_data (dict): Full catalog data from NEAR catalog API
+        
+    Returns:
+        dict: Enriched project context for research agent
+    """
+    # Start with basic data
+    enriched_context = {
+        'project_name': project_name,
+        'basic_profile': project_basic_data.get('profile', {}),
+        'catalog_data': catalog_data
+    }
+    
+    # Add rich context from catalog if available
+    if catalog_data:
+        enriched_context.update({
+            'description': catalog_data.get('description', ''),
+            'category': catalog_data.get('category', ''),
+            'stage': catalog_data.get('stage', ''),
+            'tech_stack': catalog_data.get('tech_stack', ''),
+            'website': catalog_data.get('website', ''),
+            'github': catalog_data.get('github', ''),
+            'documentation': catalog_data.get('documentation', ''),
+            'tags': catalog_data.get('tags', []),
+            'team_size': catalog_data.get('team_size', ''),
+            'founded': catalog_data.get('founded', ''),
+            'location': catalog_data.get('location', ''),
+            'blockchain_networks': catalog_data.get('blockchain_networks', ''),
+            'twitter': catalog_data.get('twitter', ''),
+            'discord': catalog_data.get('discord', ''),
+            'telegram': catalog_data.get('telegram', '')
+        })
+        
+        print(f"    📊 Research agent will have rich context:")
+        if catalog_data.get('description'):
+            print(f"      • Description: {catalog_data['description'][:100]}...")
+        if catalog_data.get('category'):
+            print(f"      • Category: {catalog_data['category']}")
+        if catalog_data.get('tech_stack'):
+            print(f"      • Tech Stack: {catalog_data['tech_stack']}")
+        if catalog_data.get('github'):
+            print(f"      • GitHub: {catalog_data['github']}")
+    else:
+        print(f"    ⚠️ Research agent will use basic data only")
+    
+    return enriched_context
 
 
 def fetch_near_projects(limit=None):
@@ -167,16 +243,15 @@ def fetch_project_details(slug):
         slug (str): Project slug identifier
         
     Returns:
-        dict: Project details from NEAR Catalog
+        dict: Project details or None if failed
     """
     try:
-        detail_url = NEAR_CATALOG_API['project_detail'].format(slug=slug)
-        detail_response = requests.get(detail_url, timeout=NEAR_CATALOG_API['timeout'])
+        detail_url = f"https://api.nearcatalog.org/project?pid={slug}"
+        detail_response = requests.get(detail_url, timeout=30)
         detail_response.raise_for_status()
         return detail_response.json()
-        
     except Exception as e:
-        print(f"  ERROR: Failed to fetch project details for {slug}: {e}")
+        print(f"      ERROR: Failed to fetch basic project details for {slug}: {e}")
         return None
 
 
@@ -337,7 +412,16 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         # Step 1: General Research Agent
         print(f"  Running general research agent...")
         research_agent = ResearchAgent(client)
-        research_result = research_agent.analyze(name, detail)
+        
+        # Fetch full project details for research context
+        catalog_data = fetch_full_project_details(slug)
+        enriched_context = create_enriched_project_context(name, detail, catalog_data)
+        
+        # Store catalog data for frontend use (avoids duplicate API calls)
+        if catalog_data:
+            db_manager.store_catalog_data(name, slug, catalog_data)
+        
+        research_result = research_agent.analyze(name, enriched_context)
         
         # Store general research
         cursor.execute('''INSERT OR REPLACE INTO project_research 

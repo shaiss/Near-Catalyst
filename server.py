@@ -140,7 +140,7 @@ def get_project_details(project_name):
         
         # Get question analyses
         cursor.execute('''
-            SELECT question_id, question_key, analysis, score, confidence, sources
+            SELECT question_id, question_key, analysis, score, confidence, sources, research_data
             FROM question_analyses 
             WHERE project_name = ?
             ORDER BY question_id
@@ -154,15 +154,64 @@ def get_project_details(project_name):
                 'analysis': q_row['analysis'],
                 'score': q_row['score'],
                 'confidence': q_row['confidence'],
-                'sources': json.loads(q_row['sources']) if q_row['sources'] else []
+                'sources': json.loads(q_row['sources']) if q_row['sources'] else [],
+                'research_data': q_row['research_data']
             })
+
+        # Get deep research data
+        cursor.execute('''
+            SELECT research_data, sources, elapsed_time, tool_calls_made, estimated_cost,
+                   success, enabled, enhanced_prompt
+            FROM deep_research_data 
+            WHERE project_name = ?
+        ''', (project_name,))
+
+        deep_research_row = cursor.fetchone()
+        deep_research_data = None
+        if deep_research_row:
+            deep_research_data = {
+                'research_data': deep_research_row['research_data'],
+                'sources': json.loads(deep_research_row['sources']) if deep_research_row['sources'] else [],
+                'elapsed_time': deep_research_row['elapsed_time'],
+                'tool_calls_made': deep_research_row['tool_calls_made'],
+                'estimated_cost': deep_research_row['estimated_cost'],
+                'success': deep_research_row['success'],
+                'enabled': deep_research_row['enabled'],
+                'enhanced_prompt': deep_research_row['enhanced_prompt']
+            }
+
+        # Get cached NEAR catalog data (NEW)
+        cursor.execute('''
+            SELECT catalog_data, name, description, category, stage, tech_stack, 
+                   website, github, twitter
+            FROM project_catalog 
+            WHERE project_name = ?
+        ''', (project_name,))
+
+        catalog_row = cursor.fetchone()
+        catalog_data = None
+        if catalog_row:
+            catalog_data = {
+                'full_data': json.loads(catalog_row['catalog_data']) if catalog_row['catalog_data'] else None,
+                'name': catalog_row['name'],
+                'description': catalog_row['description'],
+                'category': catalog_row['category'],
+                'stage': catalog_row['stage'],
+                'tech_stack': catalog_row['tech_stack'],
+                'website': catalog_row['website'],
+                'github': catalog_row['github'],
+                'twitter': catalog_row['twitter'],
+                'cached': True  # Flag to indicate this is cached data
+            }
         
         # Prepare response
         result = format_project_data(project_row)
         result.update({
             'general_research': clean_and_structure_text(project_row['research_data']),
             'general_sources': json.loads(project_row['general_sources']) if project_row['general_sources'] else [],
-            'question_analyses': question_analyses
+            'question_analyses': question_analyses,
+            'deep_research': deep_research_data,
+            'catalog_data': catalog_data  # Include cached catalog data
         })
         
         conn.close()

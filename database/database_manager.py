@@ -26,96 +26,169 @@ class DatabaseManager:
         self.db_path = db_path or DATABASE_NAME
     
     def initialize_database(self):
-        """
-        Initialize enhanced database schema with full traceability and concurrent access support.
-        
-        Returns:
-            tuple: (connection, cursor) for immediate use
-        """
-        # Enable WAL mode for better concurrent access
+        """Initialize database with required tables and return connection."""
         conn = sqlite3.connect(self.db_path)
-        
-        # Apply database optimizations
-        for pragma in DATABASE_PRAGMAS:
-            conn.execute(pragma)
-        
+        conn.execute('PRAGMA journal_mode=WAL;')  # Enable WAL mode for concurrent access
         cursor = conn.cursor()
         
-        # Create schema
-        self._create_tables(cursor)
+        # Create tables if they don't exist
+        cursor.execute('''CREATE TABLE IF NOT EXISTS project_research (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_name TEXT NOT NULL,
+            slug TEXT,
+            research_data TEXT,
+            sources TEXT,
+            success BOOLEAN,
+            error TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            UNIQUE(project_name)
+        )''')
+        
+        cursor.execute('''CREATE TABLE IF NOT EXISTS question_analyses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_name TEXT NOT NULL,
+            question_id INTEGER NOT NULL,
+            question_key TEXT NOT NULL,
+            research_data TEXT,
+            sources TEXT,
+            analysis TEXT,
+            score INTEGER,
+            confidence TEXT,
+            cache_key TEXT UNIQUE,
+            created_at TEXT,
+            updated_at TEXT
+        )''')
+        
+        cursor.execute('''CREATE TABLE IF NOT EXISTS final_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_name TEXT NOT NULL UNIQUE,
+            slug TEXT,
+            total_score INTEGER,
+            recommendation TEXT,
+            summary TEXT,
+            success BOOLEAN,
+            error TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )''')
+
+        # Add deep research table for enhanced AI analysis
+        cursor.execute('''CREATE TABLE IF NOT EXISTS deep_research_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_name TEXT NOT NULL UNIQUE,
+            slug TEXT,
+            research_data TEXT,
+            sources TEXT,
+            elapsed_time REAL,
+            tool_calls_made INTEGER,
+            estimated_cost REAL,
+            success BOOLEAN,
+            enabled BOOLEAN,
+            enhanced_prompt TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )''')
+
+        # Add NEAR catalog cache table for storing full project details
+        cursor.execute('''CREATE TABLE IF NOT EXISTS project_catalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_name TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            catalog_data TEXT NOT NULL,  -- JSON string of full catalog data
+            name TEXT,
+            description TEXT,
+            category TEXT,
+            stage TEXT,
+            tech_stack TEXT,
+            website TEXT,
+            github TEXT,
+            twitter TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )''')
+        
+        # Create indexes for better query performance
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_project_name ON project_research(project_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_question_cache ON question_analyses(cache_key)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_final_project ON final_summaries(project_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_deep_research_project ON deep_research_data(project_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_catalog_slug ON project_catalog(slug)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_catalog_project ON project_catalog(project_name)')
         
         conn.commit()
         return conn, cursor
-    
-    def _create_tables(self, cursor):
-        """Create all required database tables."""
+
+    def store_catalog_data(self, project_name, slug, catalog_data):
+        """
+        Store NEAR catalog data for a project.
         
-        # General research table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS project_research (
-                project_name TEXT PRIMARY KEY,
-                slug TEXT,
-                research_data TEXT,
-                sources TEXT,
-                success BOOLEAN,
-                error TEXT,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP
-            )
-        ''')
+        Args:
+            project_name (str): Name of the project
+            slug (str): Project slug
+            catalog_data (dict): Full catalog data from NEAR API
+        """
+        if not catalog_data:
+            return
+            
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Extract key fields for easier querying
+            name = catalog_data.get('name', project_name)
+            description = catalog_data.get('description', '')
+            category = catalog_data.get('category', '')
+            stage = catalog_data.get('stage', '')
+            tech_stack = catalog_data.get('tech_stack', '')
+            website = catalog_data.get('website', '')
+            github = catalog_data.get('github', '')
+            twitter = catalog_data.get('twitter', '')
+            
+            now = datetime.now().isoformat()
+            
+            cursor.execute('''INSERT OR REPLACE INTO project_catalog 
+                             (project_name, slug, catalog_data, name, description, category, 
+                              stage, tech_stack, website, github, twitter, created_at, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (project_name, slug, json.dumps(catalog_data), name, description, 
+                           category, stage, tech_stack, website, github, twitter, now, now))
+            
+            conn.commit()
+            conn.close()
+            print(f"    ✓ Stored NEAR catalog data for {project_name}")
+            
+        except Exception as e:
+            print(f"    ⚠️ Failed to store catalog data: {e}")
+            if 'conn' in locals():
+                conn.close()
+
+    def get_catalog_data(self, project_name):
+        """
+        Retrieve cached NEAR catalog data for a project.
         
-        # Deep research table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS deep_research_data (
-                project_name TEXT PRIMARY KEY,
-                slug TEXT,
-                research_data TEXT,
-                sources TEXT,
-                success BOOLEAN,
-                enabled BOOLEAN,
-                error TEXT,
-                elapsed_time REAL,
-                tool_calls_made INTEGER,
-                estimated_cost REAL,
-                enhanced_prompt TEXT,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                FOREIGN KEY (project_name) REFERENCES project_research (project_name)
-            )
-        ''')
-        
-        # Question-specific analyses table (with project-specific caching)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS question_analyses (
-                cache_key TEXT PRIMARY KEY,
-                project_name TEXT,
-                question_id INTEGER,
-                question_key TEXT,
-                research_data TEXT,
-                sources TEXT,
-                analysis TEXT,
-                score INTEGER,
-                confidence TEXT,
-                created_at TIMESTAMP,
-                FOREIGN KEY (project_name) REFERENCES project_research (project_name)
-            )
-        ''')
-        
-        # Final summaries table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS final_summaries (
-                project_name TEXT PRIMARY KEY,
-                slug TEXT,
-                summary TEXT,
-                total_score INTEGER,
-                recommendation TEXT,
-                success BOOLEAN,
-                error TEXT,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                FOREIGN KEY (project_name) REFERENCES project_research (project_name)
-            )
-        ''')
+        Args:
+            project_name (str): Name of the project
+            
+        Returns:
+            dict: Catalog data if found, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT catalog_data FROM project_catalog WHERE project_name = ?', (project_name,))
+            result = cursor.fetchone()
+            
+            conn.close()
+            
+            if result:
+                return json.loads(result[0])
+            return None
+            
+        except Exception as e:
+            print(f"    ⚠️ Failed to retrieve catalog data: {e}")
+            return None
     
     def debug_project_data(self, project_name):
         """

@@ -146,15 +146,31 @@
                         </div>
                     </div>
 
+                    <!-- Questions Overview - Now above tabs to persist -->
+                    <div class="questions-overview-persistent">
+                        <h3>Partnership Assessment Overview</h3>
+                        <div class="questions-grid" id="questions-grid">
+                            <!-- Quick overview cards will be populated here -->
+                        </div>
+                    </div>
+
                     <!-- Tab Navigation -->
                     <div class="tab-navigation">
-                        <button class="tab-btn active" data-tab="questions">
+                        <button class="tab-btn active" data-tab="project-details">
+                            <i class="fas fa-info-circle"></i>
+                            Project Details
+                        </button>
+                        <button class="tab-btn" data-tab="questions">
                             <i class="fas fa-list-check"></i>
                             Question Analysis
                         </button>
                         <button class="tab-btn" data-tab="research">
                             <i class="fas fa-search"></i>
                             Research Summary
+                        </button>
+                        <button class="tab-btn" data-tab="deep-research">
+                            <i class="fas fa-microscope"></i>
+                            Deep Research
                         </button>
                         <button class="tab-btn" data-tab="analysis">
                             <i class="fas fa-chart-line"></i>
@@ -164,13 +180,18 @@
 
                     <!-- Tab Content -->
                     <div class="tab-content">
-                        <!-- Questions Tab -->
-                        <div id="questions-tab" class="tab-pane active">
-                            <div class="questions-overview">
-                                <div class="questions-grid" id="questions-grid">
-                                    <!-- Quick overview cards will be populated here -->
+                        <!-- Project Details Tab (NEW HOME TAB) -->
+                        <div id="project-details-tab" class="tab-pane active">
+                            <div class="project-details-content">
+                                <h3>Project Information</h3>
+                                <div id="project-details-data" class="content-section">
+                                    <!-- Project details from NEAR catalog will be populated here -->
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Questions Tab -->
+                        <div id="questions-tab" class="tab-pane">
                             <div class="questions-detailed">
                                 <h3>Detailed Analysis</h3>
                                 <div id="questions-breakdown" class="questions-accordion">
@@ -185,6 +206,37 @@
                                 <h3>Research Summary</h3>
                                 <div id="research-summary" class="content-section">
                                     <!-- Research summary will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Deep Research Tab -->
+                        <div id="deep-research-tab" class="tab-pane">
+                            <div class="deep-research-content">
+                                <div class="research-header">
+                                    <h3>Enhanced AI Research Analysis</h3>
+                                    <div class="research-metrics">
+                                        <div class="metric-badge" id="deep-research-time">
+                                            <i class="fas fa-clock"></i>
+                                            <span>-- min</span>
+                                        </div>
+                                        <div class="metric-badge" id="deep-research-tools">
+                                            <i class="fas fa-cogs"></i>
+                                            <span>-- tools</span>
+                                        </div>
+                                        <div class="metric-badge" id="deep-research-cost">
+                                            <i class="fas fa-dollar-sign"></i>
+                                            <span>$--</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="deep-research-body">
+                                    <div id="deep-research-content" class="content-section">
+                                        <!-- Deep research content populated by JS -->
+                                    </div>
+                                    <div id="deep-research-sources" class="sources-section">
+                                        <!-- Deep research sources populated by JS -->
+                                    </div>
                                 </div>
                             </div>
                         </div>
