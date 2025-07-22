@@ -1,41 +1,30 @@
 # agents/__init__.py
 """
-Multi-Agent System for NEAR Partnership Analysis
+Agent modules for NEAR Partnership Analysis
 
-This package contains the specialized AI agents that work together to analyze
-potential technical partners for NEAR Protocol hackathons and developer events.
-
-Agents:
-- ResearchAgent: Gathers comprehensive project information
-- QuestionAgent: Analyzes specific diagnostic questions  
-- SummaryAgent: Synthesizes results into final recommendations
-
-The system implements a "Framework for Choosing Complementary Technical Partners"
-to identify collaborators that create a "1 + 1 = 3" value proposition.
+Exports all agent classes and configuration for use by the main orchestrator.
 """
 
 from .research_agent import ResearchAgent
 from .question_agent import QuestionAgent
 from .summary_agent import SummaryAgent
-from .config import (
-    DIAGNOSTIC_QUESTIONS, 
-    DATABASE_NAME, 
+from .deep_research_agent import DeepResearchAgent
+
+# Import configuration from config package
+from config.config import (
+    DIAGNOSTIC_QUESTIONS,
     NEAR_CATALOG_API,
-    TIMEOUTS,
-    PARALLEL_CONFIG,
-    SCORE_THRESHOLDS,
-    RECOMMENDATIONS
+    BATCH_PROCESSING_CONFIG,
+    DEEP_RESEARCH_CONFIG
 )
 
 __all__ = [
     'ResearchAgent',
     'QuestionAgent', 
     'SummaryAgent',
+    'DeepResearchAgent',
     'DIAGNOSTIC_QUESTIONS',
-    'DATABASE_NAME',
-    'NEAR_CATALOG_API',
-    'TIMEOUTS',
-    'PARALLEL_CONFIG',
-    'SCORE_THRESHOLDS',
-    'RECOMMENDATIONS'
+    'NEAR_CATALOG_API', 
+    'BATCH_PROCESSING_CONFIG',
+    'DEEP_RESEARCH_CONFIG'
 ] 

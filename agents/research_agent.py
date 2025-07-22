@@ -1,12 +1,13 @@
 # agents/research_agent.py
 """
-Research Agent for NEAR Partnership Analysis
+Research Agent for NEAR Catalyst Framework
 
-Agent 1: Gathers comprehensive information about projects using web search.
-Provides foundational research that other agents build upon.
+This agent conducts comprehensive research on potential hackathon partners to discover
+collaborators that can unlock developer potential and create "1 + 1 = 3" value propositions.
 """
 
-from .config import TIMEOUTS
+import json
+from config.config import TIMEOUTS
 
 
 class ResearchAgent:
@@ -37,41 +38,41 @@ class ResearchAgent:
         phase = profile.get('phase', 'Unknown')
         
         research_prompt = f"""
-        Research the project "{project_name}" for NEAR Protocol partnership evaluation using the "1+1=3" framework.
-        
-        Known info from NEAR catalog:
-        - Tagline: {tagline}
-        - Tags: {tags}
-        - Phase: {phase}
-        
-        Focus your research on partnership potential as a force multiplier for NEAR developers:
-        
-        **A. Synergistic Technology Assessment:**
-        1. Official website, documentation, APIs, and core technology offering
-        2. Does this fill a strategic gap in NEAR's stack or overlap with NEAR's core blockchain functionality?
-        3. Integration capabilities - APIs, SDKs, developer tools, and documentation quality
-        4. Previous blockchain integrations or Web3 partnership examples
-        
-        **B. Aligned Developer Ecosystem Analysis:**
-        5. Target developer audience - do they serve the same developers as NEAR?
-        6. Developer workflow positioning - different function or competing role?
-        7. Community size, developer adoption metrics, and support quality
-        8. Technical support responsiveness and commitment to developer success
-        
-        **C. Clear and Immediate Value for Builders:**
-        9. Integration complexity - can developers wire the stacks together in hours?
-        10. Hackathon readiness - plug-and-play integration vs complex setup
-        11. Partnership support history - mentors, bounties, hands-on hackathon participation
-        12. Potential for "Better Together" narrative that's clear without diagrams
-        
-        **Red Flag Detection:**
-        - Direct product overlap with NEAR's blockchain functionality
-        - Either/or choice scenarios for developers
-        - "Logo on a slide" partnerships with no technical substance
-        - Conflicting technical standards or integration friction
-        
-        Evaluate specifically: Does this create exponential value (1+1=3) when combined with NEAR Protocol for hackathon developers?
-        """
+Research the project "{project_name}" for NEAR Catalyst Framework evaluation using the "1+1=3" discovery methodology.
+
+Your research should focus on identifying hackathon co-creation partners that can unlock developer potential 
+and create exponential value during NEAR hackathons and developer events.
+
+Key Research Areas:
+1. Core technology and unique capabilities that complement NEAR's strengths
+2. Developer tools, SDKs, and integration resources for hackathon participants
+3. Target developer audience and technical complexity for rapid prototyping
+
+Focus your research on hackathon catalyst potential as a force multiplier for NEAR developers:
+- Can this technology unlock new use cases when combined with NEAR?
+- Does it fill capability gaps that NEAR developers commonly face?
+- Is there clear documentation and tooling for hackathon-speed integration?
+- What is the learning curve for developers new to this technology?
+
+Previous blockchain integrations or Web3 hackathon participation examples
+5. Technical integration patterns with blockchain/Web3 (APIs, SDKs, libraries)
+6. Ease of developer onboarding and learning curve for hackathon timeframes
+7. Documentation quality and availability of tutorials/sample code
+8. Community engagement with developers (Discord, forums, GitHub activity)
+9. Track record of supporting developer events, hackathons, or educational initiatives
+10. Alignment with NEAR's target audience (Web3 developers, dApp builders)
+11. Hackathon support history - mentors, bounties, hands-on participation
+
+RED FLAGS to identify and report:
+- Complex enterprise-only solutions that don't fit hackathon timeframes
+- Poor developer experience or lack of self-service onboarding
+- "Logo on a slide" partnerships with no technical substance
+- Technologies that compete directly with NEAR's core capabilities
+- Lack of developer-facing resources or community engagement
+
+Focus on factual, verifiable information. Provide links to documentation, GitHub repos, 
+blog posts, and other official sources wherever possible.
+"""
         
         try:
             research_response = self.client.responses.create(
@@ -88,18 +89,22 @@ class ResearchAgent:
             sources = []
             
             for item in research_response.output:
-                if item.type == "message" and item.role == "assistant":
-                    research_content = item.content[0].text
-                    # Extract sources/citations if available
-                    if hasattr(item.content[0], 'annotations'):
-                        for annotation in item.content[0].annotations:
-                            if annotation.type == "url_citation":
-                                sources.append({
-                                    "url": annotation.url,
-                                    "title": getattr(annotation, 'title', 'No title'),
-                                    "start_index": annotation.start_index,
-                                    "end_index": annotation.end_index
-                                })
+                if item.type == "message":
+                    # Look for output_text content according to OpenAI docs
+                    for content_item in item.content:
+                        if content_item.type == "output_text":
+                            research_content = content_item.text
+                            # Extract sources/citations if available
+                            if hasattr(content_item, 'annotations'):
+                                for annotation in content_item.annotations:
+                                    if annotation.type == "url_citation":
+                                        sources.append({
+                                            "url": annotation.url,
+                                            "title": getattr(annotation, 'title', 'No title'),
+                                            "start_index": annotation.start_index,
+                                            "end_index": annotation.end_index
+                                        })
+                            break
                     break
                     
             return {

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-NEAR Partnership Analysis - Multi-Agent System (Modular Version)
+NEAR Catalyst Framework - Multi-Agent System (Modular Version)
 
-Entry Point: analyze_projects_multi_agent_v2.py
+Authors: AI Assistant & User
+Date: December 2024
 
-This is the main orchestrator for the NEAR Protocol partnership analysis system.
-It coordinates multiple specialized AI agents to evaluate potential technical partners
-using a comprehensive framework that creates "1 + 1 = 3" value propositions.
+This is the main orchestrator for the NEAR Catalyst Framework - a system designed to
+discover hackathon co-creation partners that unlock developer potential and create
+exponential value through "1 + 1 = 3" collaborations.
 
 SYSTEM ARCHITECTURE:
 ===================
@@ -73,7 +74,7 @@ For Future LLMs:
 - The system uses OpenAI's gpt-4.1 model with web search capabilities
 - All agents are stateless and can run independently
 - Database schema is in database/database_manager.py
-- Configuration constants are in agents/config.py
+- Configuration constants are in config/config.py
 - Frontend communicates with Flask API in server.py
 """
 
@@ -90,8 +91,8 @@ from openai import OpenAI
 
 # Import our modular components
 from agents import (
-    ResearchAgent, QuestionAgent, SummaryAgent,
-    DIAGNOSTIC_QUESTIONS, NEAR_CATALOG_API
+    ResearchAgent, QuestionAgent, SummaryAgent, DeepResearchAgent,
+    DIAGNOSTIC_QUESTIONS, NEAR_CATALOG_API, BATCH_PROCESSING_CONFIG, DEEP_RESEARCH_CONFIG
 )
 from database import DatabaseManager
 
@@ -220,7 +221,7 @@ def should_skip_project(db_manager, project_name, force_refresh):
             conn.close()
 
 
-def run_parallel_question_analysis(client, project_name, general_research, db_path):
+def run_parallel_question_analysis(client, project_name, general_research, db_path, benchmark_format='auto'):
     """
     Execute all 6 question agents in parallel for maximum efficiency.
     
@@ -229,6 +230,7 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
         project_name (str): Name of the project
         general_research (str): General research context
         db_path (str): Path to SQLite database
+        benchmark_format (str): Benchmark format preference
         
     Returns:
         list: Results from all question agents, sorted by question ID
@@ -249,7 +251,8 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
                 project_name, 
                 general_research, 
                 question_config, 
-                db_path
+                db_path,
+                benchmark_format
             ): question_config
             for question_config in DIAGNOSTIC_QUESTIONS
         }
@@ -345,13 +348,57 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
                        datetime.now().isoformat(), datetime.now().isoformat()))
         conn.commit()
         
+        # Step 1.5: Deep Research Agent (optional)
+        deep_research_result = None
+        if args.deep_research and research_result["success"]:
+            print(f"  🔬 Deep research requested...")
+            deep_research_agent = DeepResearchAgent(client)
+            
+            # Check if deep research is enabled via config OR command line flag (flag overrides config)
+            config_enabled = deep_research_agent.is_enabled()
+            flag_override = args.deep_research
+            
+            if not config_enabled and flag_override:
+                print(f"  🚀 Deep research enabled via --deep-research flag (overriding config)")
+                print(f"      Estimated cost: ${deep_research_agent.get_estimated_cost():.2f} per project")
+                # Force enable for this execution by temporarily modifying the agent's config
+                deep_research_agent.config['enabled'] = True
+            elif not config_enabled:
+                print(f"  ⚠️  Deep research is disabled in configuration")
+                print(f"      To enable: Set DEEP_RESEARCH_CONFIG['enabled'] = True in config/config.py")
+                print(f"      Or use --deep-research flag to override")
+                print(f"      Estimated cost: ${deep_research_agent.get_estimated_cost():.2f} per project")
+            
+            # Execute deep research if enabled (via config or flag)
+            if config_enabled or flag_override:
+                # Show cost warning for first project in batch
+                if hasattr(args, '_deep_research_cost_shown') is False:
+                    print(f"  💰 Deep research enabled - Cost: ${deep_research_agent.get_estimated_cost():.2f} per project")
+                    args._deep_research_cost_shown = True
+                
+                deep_research_result = deep_research_agent.analyze(name, research_result["content"])
+                
+                # Store deep research results
+                db_manager.store_deep_research_data(name, slug, deep_research_result)
+                
+                if deep_research_result["success"]:
+                    print(f"  ✓ Deep research completed ({deep_research_result.get('tool_calls_made', 0)} tool calls)")
+        
         if args.research_only:
             print(f"  ✓ General research completed and stored")
+            if args.deep_research and deep_research_result:
+                print(f"  ✓ Deep research completed and stored")
             return True
 
         # Step 2: Question-Specific Agents (parallel execution)
+        # Use deep research data if available and successful, otherwise use general research
+        research_context = research_result["content"]
+        if deep_research_result and deep_research_result.get("success"):
+            research_context = deep_research_result["content"]
+            print(f"  📊 Using deep research data for question analysis")
+        
         question_results = run_parallel_question_analysis(
-            client, name, research_result["content"], db_manager.db_path
+            client, name, research_context, db_manager.db_path, args.benchmark_format
         )
         
         if args.questions_only:
@@ -361,7 +408,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         # Step 3: Summary Agent
         summary_agent = SummaryAgent(client)
         summary_result = summary_agent.analyze(
-            name, research_result["content"], question_results, system_prompt
+            name, research_context, question_results, system_prompt, args.benchmark_format
         )
         
         # Store final summary
@@ -373,7 +420,10 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
                        summary_result.get("error"), datetime.now().isoformat(), datetime.now().isoformat()))
         conn.commit()
         
-        print(f"  ✓ Complete analysis stored. Score: {summary_result['total_score']}/6")
+        score_info = f"Score: {summary_result['total_score']}/6"
+        if deep_research_result and deep_research_result.get("success"):
+            score_info += " (with deep research)"
+        print(f"  ✓ Complete analysis stored. {score_info}")
         
         return True
         
@@ -383,6 +433,81 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
     finally:
         if 'conn' in locals():
             conn.close()
+
+
+def process_project_batch(batch_data, batch_num, total_batches):
+    """
+    Process a batch of projects concurrently.
+    
+    Args:
+        batch_data (dict): Contains client, db_manager, project_slugs, system_prompt, args
+        batch_num (int): Current batch number
+        total_batches (int): Total number of batches
+        
+    Returns:
+        tuple: (successful_count, total_count)
+    """
+    client = batch_data['client']
+    db_manager = batch_data['db_manager']
+    project_slugs = batch_data['project_slugs']
+    system_prompt = batch_data['system_prompt']
+    args = batch_data['args']
+    
+    # Track deep research override status for the completion summary
+    if args.deep_research and not hasattr(args, '_deep_research_was_overridden'):
+        deep_research_agent_temp = DeepResearchAgent(None)
+        args._deep_research_was_overridden = not deep_research_agent_temp.is_enabled()
+    
+    print(f"\n📦 Processing batch {batch_num}/{total_batches} ({len(project_slugs)} projects)")
+    
+    successful_analyses = 0
+    batch_start_time = time.time()
+    
+    def process_single_project_wrapper(slug_with_index):
+        """Wrapper function for processing a single project with error handling."""
+        slug, project_index = slug_with_index
+        try:
+            # Add small delay between projects to be respectful to APIs
+            time.sleep(BATCH_PROCESSING_CONFIG['project_delay'] * project_index)
+            
+            print(f"  [{project_index + 1}/{len(project_slugs)}] Processing {slug}...")
+            
+            # Fetch project details
+            detail = fetch_project_details(slug)
+            if not detail:
+                return False
+            
+            # Analyze the project
+            project_data = {'slug': slug, 'detail': detail}
+            return analyze_single_project(client, db_manager, project_data, system_prompt, args)
+            
+        except Exception as e:
+            print(f"  ERROR: Failed to process {slug}: {e}")
+            return False
+    
+    # Use ThreadPoolExecutor for concurrent processing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(project_slugs)) as executor:
+        # Submit all projects in the batch
+        future_to_slug = {
+            executor.submit(process_single_project_wrapper, (slug, i)): slug
+            for i, slug in enumerate(project_slugs)
+        }
+        
+        # Collect results as they complete
+        for future in concurrent.futures.as_completed(future_to_slug):
+            slug = future_to_slug[future]
+            try:
+                if future.result(timeout=300):  # 5 minute timeout per project
+                    successful_analyses += 1
+            except concurrent.futures.TimeoutError:
+                print(f"  ⚠️ Timeout processing {slug}")
+            except Exception as e:
+                print(f"  ❌ Error processing {slug}: {e}")
+    
+    batch_elapsed = time.time() - batch_start_time
+    print(f"  ✅ Batch {batch_num} completed in {batch_elapsed:.1f}s ({successful_analyses}/{len(project_slugs)} successful)")
+    
+    return successful_analyses, len(project_slugs)
 
 
 def export_results(db_manager):
@@ -417,7 +542,7 @@ def main():
     1. Parses command line arguments
     2. Sets up environment and dependencies
     3. Fetches projects from NEAR Catalog
-    4. Orchestrates multi-agent analysis for each project
+    4. Orchestrates multi-agent analysis for each project (with batch processing)
     5. Exports comprehensive results
     
     The system is designed to be resumable and handles caching automatically.
@@ -429,20 +554,114 @@ def main():
 Examples:
   python analyze_projects_multi_agent_v2.py --limit 5
   python analyze_projects_multi_agent_v2.py --research-only --limit 10
-  python analyze_projects_multi_agent_v2.py --force-refresh
+  python analyze_projects_multi_agent_v2.py --force-refresh --threads 3
+  python analyze_projects_multi_agent_v2.py --threads 8 --limit 50
+  python analyze_projects_multi_agent_v2.py --deep-research --limit 3
+  python analyze_projects_multi_agent_v2.py --deep-research --research-only --limit 1
+  
+Deep Research:
+  Deep research uses OpenAI's o4-mini-deep-research model for comprehensive analysis.
+  Cost: ~$2 per project. Can be enabled via flag (overrides config) or config file.
+  
+Database management:
+  python analyze_projects_multi_agent_v2.py --list
+  python analyze_projects_multi_agent_v2.py --clear all
+  python analyze_projects_multi_agent_v2.py --clear project1 project2 project3
         """
     )
     parser.add_argument('--limit', type=int, default=None, 
                        help='Number of projects to process (0 for no limit)')
+    parser.add_argument('--threads', type=int, default=BATCH_PROCESSING_CONFIG['default_batch_size'],
+                       help=f'Number of projects to process concurrently (default: {BATCH_PROCESSING_CONFIG["default_batch_size"]})')
+    parser.add_argument('--benchmark-format', choices=['auto', 'json', 'csv'], default='auto',
+                       help='Benchmark data format preference: auto (detect), json, or csv (default: auto)')
     parser.add_argument('--research-only', action='store_true', 
                        help='Only gather general research')
     parser.add_argument('--questions-only', action='store_true', 
                        help='Only analyze questions (skip summary)')
     parser.add_argument('--force-refresh', action='store_true', 
                        help='Ignore cache and refresh all data')
+    parser.add_argument('--deep-research', action='store_true', 
+                       help='Enable deep research (overrides config setting if disabled)')
+    parser.add_argument('--clear', nargs='*', metavar='PROJECT', 
+                       help='Clear specific project(s) from database or "all" to clear everything')
+    parser.add_argument('--list', action='store_true', 
+                       help='List all projects in the database')
     args = parser.parse_args()
 
-    # Validate arguments
+    # Initialize database manager first for database operations
+    db_manager = DatabaseManager()
+    
+    # Handle database listing
+    if args.list:
+        print("🗃️ Projects in database:")
+        print("=" * 60)
+        projects = db_manager.list_projects()
+        if not projects:
+            print("No projects found in database.")
+        else:
+            print(f"{'Name':<30} {'Slug':<20} {'Score':<6} {'Deep':<5} {'Updated'}")
+            print("-" * 60)
+            for project in projects:
+                score = f"{project['score']}/6" if project['score'] is not None else "N/A"
+                deep_research = "✓" if project.get('deep_research_performed') else " "
+                updated = project['updated_at'][:16] if project['updated_at'] else "N/A"
+                print(f"{project['name'][:29]:<30} {project['slug'][:19]:<20} {score:<6} {deep_research:<5} {updated}")
+            print(f"\nTotal: {len(projects)} projects")
+            print("Deep: ✓ indicates deep research was performed")
+        return
+    
+    # Handle database clearing
+    if args.clear is not None:
+        print("🗑️ Database clearing operation")
+        print("=" * 60)
+        
+        # If no arguments provided with --clear, treat as 'all'
+        if len(args.clear) == 0:
+            identifiers = 'all'
+        elif len(args.clear) == 1 and args.clear[0].lower() == 'all':
+            identifiers = 'all'
+        else:
+            identifiers = args.clear
+        
+        # Confirmation for clearing all
+        if identifiers == 'all':
+            print("⚠️  WARNING: This will clear ALL projects from the database!")
+            projects = db_manager.list_projects()
+            if projects:
+                print(f"About to delete {len(projects)} projects:")
+                for project in projects[:5]:  # Show first 5
+                    print(f"  - {project['name']}")
+                if len(projects) > 5:
+                    print(f"  ... and {len(projects) - 5} more projects")
+                
+                confirm = input("\nAre you sure? Type 'yes' to confirm: ")
+                if confirm.lower() != 'yes':
+                    print("Operation cancelled.")
+                    return
+            else:
+                print("Database is already empty.")
+                return
+        
+        # Perform the clearing operation
+        try:
+            result = db_manager.clear_projects(identifiers)
+            print(f"✅ {result['message']}")
+            
+            if 'cleared_records' in result:
+                print("Cleared records:")
+                for table, count in result['cleared_records'].items():
+                    print(f"  - {table}: {count} records")
+            
+            if 'not_found' in result:
+                print(f"⚠️  Projects not found: {', '.join(result['not_found'])}")
+                
+        except Exception as e:
+            print(f"❌ Error clearing database: {e}")
+        
+        return
+
+    # Validate arguments for normal processing
     if args.limit is None:
         print('Warning: No limit specified. Processing all projects.')
         limit = None
@@ -451,43 +670,92 @@ Examples:
     else:
         limit = args.limit
 
-    print("🚀 NEAR Partnership Analysis - Multi-Agent System v2")
+    # Validate threads parameter
+    if args.threads > BATCH_PROCESSING_CONFIG['max_batch_size']:
+        print(f"Warning: Threads ({args.threads}) exceeds max batch size ({BATCH_PROCESSING_CONFIG['max_batch_size']})")
+        print(f"Setting threads to {BATCH_PROCESSING_CONFIG['max_batch_size']} to prevent API rate limiting")
+        args.threads = BATCH_PROCESSING_CONFIG['max_batch_size']
+    elif args.threads < 1:
+        print("Error: Threads must be at least 1")
+        sys.exit(1)
+
+    print("🚀 NEAR Catalyst Framework - Multi-Agent System v2")
     print("=" * 60)
+    print(f"Batch processing: {args.threads} projects concurrently")
+    print(f"Benchmark format: {args.benchmark_format}")
+    
+    # Show deep research status
+    if args.deep_research:
+        deep_research_agent = DeepResearchAgent(None)  # Just for config checking
+        config_enabled = deep_research_agent.is_enabled()
+        if config_enabled:
+            print(f"🔬 Deep research: ENABLED in config (${deep_research_agent.get_estimated_cost():.2f} per project)")
+        else:
+            print(f"🚀 Deep research: ENABLED via --deep-research flag (${deep_research_agent.get_estimated_cost():.2f} per project)")
+            print(f"    Config setting: DISABLED (flag overrides config)")
+    else:
+        print(f"📊 Deep research: DISABLED (use --deep-research to enable)")
     
     # Setup environment
     client, system_prompt = setup_environment()
-    
-    # Initialize database manager
-    db_manager = DatabaseManager()
     
     # Fetch projects to analyze
     project_slugs = fetch_near_projects(limit)
     
     print(f"\nProcessing {len(project_slugs)} projects with multi-agent analysis...")
     
-    # Process each project
+    # Process projects in batches
     successful_analyses = 0
-    for i, slug in enumerate(project_slugs, 1):
-        print(f"\n[{i}/{len(project_slugs)}] Processing {slug}...")
+    total_processed = 0
+    
+    # Split projects into batches
+    batch_size = args.threads
+    batches = [project_slugs[i:i + batch_size] for i in range(0, len(project_slugs), batch_size)]
+    total_batches = len(batches)
+    
+    print(f"Split into {total_batches} batches of {batch_size} projects each")
+    
+    batch_data = {
+        'client': client,
+        'db_manager': db_manager,
+        'system_prompt': system_prompt,
+        'args': args
+    }
+    
+    for batch_num, batch_slugs in enumerate(batches, 1):
+        batch_data['project_slugs'] = batch_slugs
         
-        # Fetch project details
-        detail = fetch_project_details(slug)
-        if not detail:
-            continue
+        batch_successful, batch_total = process_project_batch(batch_data, batch_num, total_batches)
+        successful_analyses += batch_successful
+        total_processed += batch_total
         
-        # Analyze the project
-        project_data = {'slug': slug, 'detail': detail}
-        if analyze_single_project(client, db_manager, project_data, system_prompt, args):
-            successful_analyses += 1
-        
-        # Brief pause between projects to be respectful to APIs
-        time.sleep(1)
+        # Add delay between batches to be respectful to APIs
+        if batch_num < total_batches:
+            print(f"  Waiting {BATCH_PROCESSING_CONFIG['inter_batch_delay']}s before next batch...")
+            time.sleep(BATCH_PROCESSING_CONFIG['inter_batch_delay'])
 
     # Export comprehensive results
     export_results(db_manager)
 
     print(f"\n✅ Completed multi-agent processing!")
-    print(f"   Successfully analyzed: {successful_analyses}/{len(project_slugs)} projects")
+    print(f"   Successfully analyzed: {successful_analyses}/{total_processed} projects")
+    print(f"   Batch processing: {args.threads} concurrent projects")
+    print(f"   Benchmark format: {args.benchmark_format}")
+    
+    # Show deep research summary if enabled
+    if args.deep_research:
+        deep_research_agent = DeepResearchAgent(None)
+        config_enabled = deep_research_agent.is_enabled()
+        estimated_total_cost = successful_analyses * deep_research_agent.get_estimated_cost()
+        
+        # Use tracked override status if available, otherwise check config
+        was_overridden = getattr(args, '_deep_research_was_overridden', False)
+        
+        if config_enabled and not was_overridden:
+            print(f"   Deep research: ENABLED in config (est. total cost: ${estimated_total_cost:.2f})")
+        else:
+            print(f"   Deep research: ENABLED via flag override (est. total cost: ${estimated_total_cost:.2f})")
+    
     print(f"   Database: {db_manager.db_path}")
     print(f"   Frontend: Run 'python server.py' to view dashboard")
     print("=" * 60)

@@ -1,12 +1,14 @@
 # agents/summary_agent.py
 """
-Summary Agent for NEAR Partnership Analysis
+Summary Agent for NEAR Catalyst Framework
 
-Agent 8: Synthesizes all research and question analyses into a final recommendation.
-Generates comprehensive partnership evaluation reports.
+This agent synthesizes all analysis results into final hackathon catalyst recommendations,
+determining which partners can unlock developer potential and create exponential value.
 """
 
-from .config import DIAGNOSTIC_QUESTIONS, TIMEOUTS, SCORE_THRESHOLDS, RECOMMENDATIONS, load_partnership_benchmarks
+import json
+from config.config import DIAGNOSTIC_QUESTIONS, TIMEOUTS, SCORE_THRESHOLDS, RECOMMENDATIONS, load_partnership_benchmarks
+from typing import List, Dict
 
 
 class SummaryAgent:
@@ -19,114 +21,93 @@ class SummaryAgent:
         self.client = client
         self.timeout = TIMEOUTS['summary_agent']
     
-    def analyze(self, project_name, general_research, question_results, system_prompt):
+    def analyze(self, project_name: str, general_research: str, question_analyses: List[Dict], system_prompt: str, benchmark_format: str = 'auto') -> Dict:
         """
-        Generate comprehensive partnership analysis summary.
+        Analyze and synthesize all results into final recommendation.
+        
+        This method provides a consistent interface with other agents.
         
         Args:
-            project_name (str): Name of the project
-            general_research (str): General research about the project
-            question_results (list): Results from all question agents
-            system_prompt (str): System prompt with analysis framework
+            project_name: Name of the project being evaluated
+            general_research: Research findings from research agent (may be deep research if available)
+            question_analyses: List of question analysis results
+            system_prompt: System prompt (not used in this agent but kept for consistency)
+            benchmark_format: Format preference for benchmark data
             
         Returns:
-            dict: Summary results with recommendation and total score
+            Dictionary containing final catalyst assessment and recommendation
         """
-        print(f"  Generating final summary...")
-        
-        # Load partnership benchmarks
-        benchmarks = load_partnership_benchmarks()
-        
-        # Prepare question results summary
-        results_summary = []
-        total_score = 0
-        
-        for result in question_results:
-            q_config = next(q for q in DIAGNOSTIC_QUESTIONS if q["id"] == result["question_id"])
-            results_summary.append(f"""
-Q{result['question_id']}: {q_config['question']} - {q_config['description']}
-Score: {result['score']} | Confidence: {result['confidence']}
-Analysis: {result['analysis'][:500]}...
-""")
-            total_score += result["score"]
-        
-        # Generate recommendation based on score thresholds
-        recommendation = self._generate_recommendation(total_score)
-        
-        # Format benchmark examples for summary
-        complementary_examples = [f"{ex['partner']} ({ex['score']:+d})" for ex in benchmarks["framework_benchmarks"]["complementary_examples"]]
-        competitive_examples = [f"{ex['partner']} ({ex['score']:+d})" for ex in benchmarks["framework_benchmarks"]["competitive_examples"]]
-        
-        summary_prompt = f"""
-        Apply the "1+1=3" Partnership Framework to generate a comprehensive evaluation of {project_name} as a NEAR Protocol partner.
-        
-        FRAMEWORK CONTEXT: You are using the established framework that evaluates complementary partners (like {', '.join(complementary_examples)}) versus competitive/misaligned partners (like {', '.join(competitive_examples)}). The goal is to find partners that create exponential value when combined with NEAR Protocol.
-        
-        PROJECT RESEARCH:
-        {general_research[:2000]}
-        
-        SIX-QUESTION DIAGNOSTIC ANALYSIS:
-        {"".join(results_summary)}
-        
-        TOTAL FRAMEWORK SCORE: {total_score}/6
-        
-        Generate a partnership evaluation using framework methodology:
-        
-        1. **Partnership Diagnostic Table**: 
-           Present all 6 framework questions with scores and rationales using framework language:
-           - Gap-Filler? (strategic gap vs overlap)
-           - New Proof-Points? (unlock joint use-cases)
-           - Clear Story? ("Better Together" one-sentence pitch)
-           - Shared Audience, Different Function? (same devs, different workflow steps)
-           - Low-Friction Integration? (wire together in hours)
-           - Hands-On Support? (mentors, bounties, tooling)
-        
-        2. **Framework Classification**:
-           Compare to benchmark examples:
-           • Complementary Partners ({', '.join(complementary_examples)}): Fill strategic gaps, unlock new use-cases
-           • Competitive Partners ({', '.join(competitive_examples)}): Create either/or choices, overlap core functions
-           
-        3. **"1+1=3" Value Assessment**:
-           - What exponential value does this partnership unlock?
-           - Does this create capabilities neither platform can deliver alone?
-           - Is there a clear "Better Together" narrative without diagrams?
-        
-        4. **Partnership Recommendation** (using framework thresholds):
-           - **+4 to +6**: "Strong candidate; explore MoU/co-marketing" 
-           - **0 to +3**: "Mixed; negotiate scope"
-           - **< 0**: "Decline or redesign the collaboration"
-        
-        5. **Implementation Roadmap**: 
-           - Specific next steps for NEAR partnership team
-           - Integration requirements and hackathon readiness
-           - Potential collaboration models (co-marketing, joint bounties, etc.)
-        
-        Use framework terminology throughout: "strategic gap," "Better Together," "exponential value," "complementary vs competitive."
+        return self.generate_final_summary(project_name, general_research, question_analyses, benchmark_format)
+    
+    def generate_final_summary(self, project_name: str, general_research: str, question_analyses: List[Dict], benchmark_format: str = 'auto') -> Dict:
         """
+        Synthesize all analysis results into a final hackathon catalyst recommendation.
         
+        Args:
+            project_name: Name of the project being evaluated
+            general_research: Research findings from research agent (may be deep research if available)
+            question_analyses: List of question analysis results
+            benchmark_format: Format preference for benchmark data
+            
+        Returns:
+            Dictionary containing final catalyst assessment and recommendation
+        """
         try:
-            summary_response = self.client.chat.completions.create(
-                model="gpt-4.1",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": summary_prompt}
-                ],
-                timeout=self.timeout
+            # Load benchmarks with specified format
+            benchmarks = load_partnership_benchmarks(benchmark_format)
+            
+            # Calculate total score
+            total_score = sum([result.get("score", 0) for result in question_analyses])
+            
+            # Check for analysis quality issues
+            empty_analyses = [q for q in question_analyses if not q.get("analysis") or q.get("analysis", "").strip() == ""]
+            if empty_analyses:
+                print(f"  ⚠️  WARNING: {len(empty_analyses)} question(s) have empty analysis:")
+                for q in empty_analyses:
+                    print(f"      Q{q.get('question_id', '?')}: Empty analysis detected")
+            
+            # Generate recommendation based on score thresholds
+            recommendation = self._generate_recommendation(total_score)
+            
+            # Create synthesis prompt
+            synthesis_prompt = self._create_synthesis_prompt(
+                project_name, general_research, question_analyses, 
+                total_score, recommendation, benchmarks
             )
             
+            # Get LLM synthesis using GPT-4.1 as required
+            print(f"  📊 Generating final summary with GPT-4.1...")
+            response = self.client.chat.completions.create(
+                model="gpt-4.1",  # CRITICAL: Use GPT-4.1 as required in memory
+                messages=[
+                    {"role": "system", "content": "You are a NEAR Partnership Analysis expert synthesizing hackathon catalyst evaluations."},
+                    {"role": "user", "content": synthesis_prompt}
+                ],
+                max_tokens=800,
+                timeout=TIMEOUTS['summary_agent']
+            )
+            
+            summary_text = response.choices[0].message.content.strip()
+            
+            # Validate summary quality
+            if len(summary_text) < 50:
+                print(f"  ⚠️  WARNING: Generated summary is very short ({len(summary_text)} chars)")
+            
+            print(f"  ✅ Final summary generated: {total_score}/6 score, {recommendation}")
+            
             return {
-                "summary": summary_response.choices[0].message.content,
+                "summary": summary_text,
                 "total_score": total_score,
                 "recommendation": recommendation,
                 "success": True
             }
             
         except Exception as e:
-            print(f"  ERROR: Summary generation failed: {e}")
+            print(f"  ❌ ERROR: Summary synthesis failed - {str(e)}")
             return {
-                "summary": f"Summary generation failed for {project_name}: {str(e)}",
-                "total_score": total_score,
-                "recommendation": recommendation,
+                "summary": f"Synthesis failed: {str(e)}",
+                "total_score": 0,
+                "recommendation": "Analysis incomplete",
                 "success": False,
                 "error": str(e)
             }
@@ -138,4 +119,87 @@ Analysis: {result['analysis'][:500]}...
         elif total_score >= SCORE_THRESHOLDS['mixed_fit']:
             return RECOMMENDATIONS['mixed_fit']
         else:
-            return RECOMMENDATIONS['decline'] 
+            return RECOMMENDATIONS['decline']
+    
+    def _create_synthesis_prompt(self, project_name, general_research, question_analyses, total_score, recommendation, benchmarks):
+        """Create a comprehensive synthesis prompt for the LLM."""
+        
+        # Check if this appears to be deep research data
+        research_type = "deep research" if len(general_research) > 5000 else "general research"
+        
+        # Build question summaries
+        question_summaries = []
+        for q in question_analyses:
+            q_id = q.get('question_id', '?')
+            score = q.get('score', 0)
+            confidence = q.get('confidence', 'Unknown')
+            analysis = q.get('analysis', 'No analysis available')
+            
+            # Get question text from config
+            question_text = "Unknown question"
+            for diag_q in DIAGNOSTIC_QUESTIONS:
+                if diag_q['id'] == q_id:
+                    question_text = diag_q['question']
+                    break
+            
+            question_summaries.append(f"""
+**Q{q_id}: {question_text}**
+Score: {score:+d} | Confidence: {confidence}
+Analysis: {analysis[:200]}{'...' if len(analysis) > 200 else ''}
+""")
+        
+        # Create the synthesis prompt
+        synthesis_prompt = f"""
+Synthesize a comprehensive hackathon catalyst evaluation for {project_name}.
+
+**PROJECT CONTEXT (from {research_type}):**
+{general_research[:1500]}
+
+**DETAILED QUESTION ANALYSIS:**
+{''.join(question_summaries)}
+
+**OVERALL SCORING:**
+Total Score: {total_score}/6
+Recommendation: {recommendation}
+
+**FRAMEWORK BENCHMARKS:**
+{self._format_benchmarks_for_prompt(benchmarks)}
+
+**SYNTHESIS REQUIREMENTS:**
+Create a comprehensive summary that:
+
+1. **Executive Summary**: One paragraph overview of {project_name}'s hackathon catalyst potential
+2. **Strengths & Opportunities**: Key areas where this partnership could unlock developer potential
+3. **Challenges & Risks**: Potential friction points or integration challenges
+4. **Recommendation Rationale**: Why this score/recommendation makes sense
+5. **Next Steps**: Specific actions if pursuing this partnership
+
+**OUTPUT FORMAT:**
+Structure your response as a professional partnership evaluation report. Focus on:
+- Hackathon-specific value proposition
+- Developer experience and integration complexity
+- Partnership readiness and support capabilities
+- Risk assessment and mitigation strategies
+
+Keep the tone analytical but accessible, suitable for both technical and business stakeholders.
+"""
+        
+        return synthesis_prompt
+    
+    def _format_benchmarks_for_prompt(self, benchmarks):
+        """Format benchmark examples for the synthesis prompt."""
+        try:
+            examples = []
+            
+            # Add complementary examples
+            for example in benchmarks.get("framework_benchmarks", {}).get("complementary_examples", []):
+                examples.append(f"✅ {example['partner']} ({example['score']:+d}): {example['description']}")
+            
+            # Add competitive examples  
+            for example in benchmarks.get("framework_benchmarks", {}).get("competitive_examples", []):
+                examples.append(f"❌ {example['partner']} ({example['score']:+d}): {example['description']}")
+            
+            return "\n".join(examples) if examples else "No benchmark examples available"
+            
+        except Exception:
+            return "Benchmark formatting failed" 

@@ -1,8 +1,8 @@
-# Partnership Framework Benchmarks
+# Catalyst Framework Benchmarks
 
-## Overview
+## 🎯 Overview
 
-The NEAR Partnership Analysis system uses external benchmark examples to evaluate potential partners against proven complementary and competitive cases. **Real partnership evaluations are treated as sensitive internal data** and kept in gitignored files, similar to environment variables.
+The NEAR Catalyst Framework uses external benchmark examples to evaluate potential hackathon partners against proven complementary and competitive cases. **Real catalyst evaluations are treated as sensitive internal data** and kept in gitignored files, similar to environment variables.
 
 ## ⚠️ **Important: Sensitive Data Handling**
 

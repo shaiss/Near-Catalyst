@@ -1,10 +1,8 @@
-# NEAR Partnership Analysis - Agentic Data Flow
+# NEAR Catalyst Framework - Agentic Data Flow
 
-This document explains the complete data flow and multi-agent orchestration from the moment we extract a project name (e.g., "ref-finance") through the entire analysis pipeline.
+## 🎯 System Overview
 
-## Overview: Multi-Agent Swarm Architecture
-
-Our system implements an **8-agent swarm** that collaboratively analyzes partnership opportunities. Each agent has a specialized role and operates with specific data inputs/outputs.
+Our system implements an **8-agent swarm** that collaboratively discovers hackathon catalyst opportunities. Each agent has a specialized role and operates with specific data inputs/outputs to identify co-creation partners that unlock developer potential during NEAR hackathons and developer events.
 
 ## 🔄 High-Level Data Flow
 
@@ -199,14 +197,14 @@ sequenceDiagram
     Note over SA: Aggregate scores:<br/>Q1: +1, Q2: +1, Q3: 0<br/>Q4: +1, Q5: +1, Q6: +1<br/>Total: 5/6
     
     SA->>Config: Check score against thresholds
-    Config-->>SA: Score 5 >= 4 → "Green-light partnership"
+    Config-->>SA: Score 5 >= 4 → "Green-light catalyst partnership"
     
     Note over SA: Construct synthesis prompt with:<br/>- General research context<br/>- All question analyses<br/>- Score breakdown<br/>- Recommendation framework
     
     SA->>OpenAI: chat.completions.create() with system prompt
-    OpenAI-->>SA: Comprehensive partnership summary
+    OpenAI-->>SA: Comprehensive hackathon catalyst summary
     
-    SA-->>Orch: Return summary_result{<br/>summary: "...",<br/>total_score: 5,<br/>recommendation: "Green-light...",<br/>success: true<br/>}
+    SA-->>Orch: Return summary_result{<br/>summary: "...",<br/>total_score: 5,<br/>recommendation: "Green-light catalyst partnership. Strong candidate for hackathon co-creation.",<br/>success: true<br/>}
 ```
 
 ### Phase 7: Data Persistence & Export Pipeline
@@ -323,7 +321,7 @@ graph TD
   "project_name": "Rhea Finance",
   "slug": "ref-finance",
   "total_score": 5,
-  "recommendation": "Green-light partnership. Strong candidate for strategic collaboration.",
+  "recommendation": "Green-light catalyst partnership. Strong candidate for hackathon co-creation.",
   "general_research": "Comprehensive overview...",
   "general_sources": [...],
   "question_analyses": [
@@ -336,7 +334,7 @@ graph TD
       "sources": [...]
     }
   ],
-  "final_summary": "Partnership analysis summary...",
+  "final_summary": "Hackathon catalyst discovery summary...",
   "created_at": "2024-01-15T10:30:00"
 }
 ```

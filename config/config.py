@@ -1,12 +1,15 @@
-# agents/config.py
+# config/config.py
 """
-Configuration module for NEAR Partnership Analysis Multi-Agent System.
+Configuration module for NEAR Catalyst Framework Multi-Agent System.
 
-This module contains:
-- Diagnostic questions framework
-- Database configuration
-- API endpoints and timeouts
-- Partnership framework benchmarks loader
+Defines the diagnostic questions, scoring thresholds, timeouts, and database settings
+for discovering hackathon co-creation partners that unlock developer potential.
+
+Features:
+- Six-question catalyst discovery survey
+- Hackathon catalyst benchmarks loader
+- Multi-agent coordination timeouts
+- Database configuration for analysis persistence
 """
 
 import json
@@ -79,14 +82,46 @@ TIMEOUTS = {
     'research_agent': 120,
     'question_agent': 180,
     'analysis_agent': 60,
-    'summary_agent': 90
+    'summary_agent': 90,
+    'deep_research_agent': 1800  # 30 minutes for deep research (can take a long time)
 }
 
-# Parallel execution settings
+# Deep Research Configuration
+DEEP_RESEARCH_CONFIG = {
+    'enabled': False,  # Off by default due to cost ($2 per input)
+    'model': 'o4-mini-deep-research-2025-06-26',  # Cost-effective deep research model as requested
+    'priming_model': 'gpt-4.1',  # Model to prime the deep research agent
+    'use_cached_input': True,  # Use cached input to reduce costs
+    'max_tool_calls': 50,  # Limit tool calls to control cost and latency
+    'timeout': 1800,  # 30 minutes timeout
+    'background_mode': True,  # Use background mode for long-running tasks (required for reliability)
+    'cost_per_input': 2.00,  # Cost tracking for budgeting
+    'tools': [
+        {"type": "web_search_preview"},
+        {"type": "code_interpreter", "container": {"type": "auto"}}
+    ]
+}
+
+# Parallel execution settings for question agents (within a single project)
 PARALLEL_CONFIG = {
     'max_workers': 6,  # One per question
     'retry_attempts': 3,
     'retry_backoff': 0.1  # Base delay for exponential backoff
+}
+
+# Batch processing configuration for multiple projects
+BATCH_PROCESSING_CONFIG = {
+    'default_batch_size': 5,  # Process 5 projects concurrently by default
+    'max_batch_size': 10,     # Maximum allowed batch size to prevent API rate limiting
+    'inter_batch_delay': 2.0, # Seconds to wait between batches
+    'project_delay': 0.5      # Seconds to wait between individual projects in a batch
+}
+
+# Benchmark format configuration
+BENCHMARK_CONFIG = {
+    'default_format': 'json',  # 'auto', 'json', or 'csv'
+    'auto_detect': False,       # Whether to auto-detect preferred format
+    'csv_priority': False       # Prioritize CSV files when both formats exist
 }
 
 # Score thresholds for recommendations (from "1+1=3" Partnership Framework)
@@ -103,12 +138,97 @@ RECOMMENDATIONS = {
 }
 
 # Partnership Framework Benchmarks
-def load_partnership_benchmarks():
-    """Load partnership benchmarks from external JSON file."""
-    benchmarks_path = os.path.join(os.path.dirname(__file__), 'partnership_benchmarks.json')
+def load_partnership_benchmarks(format_preference: str = 'auto'):
+    """
+    Load partnership benchmarks with automatic CSV-to-JSON synchronization.
     
-    # Default benchmarks if file doesn't exist - using generic examples, not real evaluations
-    default_benchmarks = {
+    Behavior:
+    - Default format is JSON (for tech users)
+    - If CSV files are newer than JSON, auto-convert CSV to JSON (for non-tech users)
+    - If JSON is newer than CSV, use JSON and ignore CSV files
+    
+    Args:
+        format_preference: 'auto', 'json', or 'csv'
+        
+    Returns:
+        dict: Partnership benchmarks data
+    """
+    try:
+        from .benchmark_converter import BenchmarkConverter
+        
+        converter = BenchmarkConverter(os.path.dirname(__file__))
+        
+        # Handle format preference
+        if format_preference == 'auto':
+            if BENCHMARK_CONFIG['auto_detect']:
+                # Check if CSV files are newer and auto-sync if needed
+                preferred_format = converter.detect_preferred_format()
+                if preferred_format == 'csv':
+                    print("📝 CSV files are newer than JSON - auto-syncing to JSON...")
+                    converter.csv_to_json()  # Auto-convert CSV to JSON
+                    preferred_format = 'json'  # Use the updated JSON
+                format_preference = preferred_format
+            else:
+                # Use default format but still check for auto-sync
+                if _should_auto_sync_csv_to_json(converter):
+                    print("📝 CSV files are newer than JSON - auto-syncing to JSON...")
+                    converter.csv_to_json()
+                format_preference = BENCHMARK_CONFIG['default_format']
+        elif format_preference == 'json':
+            # Even when explicitly requesting JSON, check for auto-sync
+            if _should_auto_sync_csv_to_json(converter):
+                print("📝 CSV files are newer than JSON - auto-syncing to JSON...")
+                converter.csv_to_json()
+        
+        # Load benchmark data
+        return converter.get_benchmark_data(format_preference)
+        
+    except ImportError:
+        print("Warning: BenchmarkConverter not available, using default benchmarks")
+        return _get_default_benchmarks()
+    except Exception as e:
+        print(f"Warning: Could not load partnership benchmarks: {e}")
+        return _get_default_benchmarks()
+
+
+def _should_auto_sync_csv_to_json(converter):
+    """
+    Check if CSV files should auto-sync to JSON.
+    
+    Args:
+        converter: BenchmarkConverter instance
+        
+    Returns:
+        bool: True if CSV files are newer and should trigger auto-sync
+    """
+    try:
+        csv_files = [
+            converter.csv_examples_file,
+            converter.csv_principles_file, 
+            converter.csv_scoring_file
+        ]
+        
+        # Check if all CSV files exist
+        csv_exist = all(os.path.exists(f) for f in csv_files)
+        json_exists = os.path.exists(converter.json_file)
+        
+        if not csv_exist or not json_exists:
+            return False
+            
+        # Check if any CSV file is newer than JSON
+        json_mtime = os.path.getmtime(converter.json_file)
+        csv_mtimes = [os.path.getmtime(f) for f in csv_files]
+        newest_csv_mtime = max(csv_mtimes)
+        
+        # Auto-sync if any CSV is newer than JSON
+        return newest_csv_mtime > json_mtime
+        
+    except Exception:
+        return False
+
+def _get_default_benchmarks():
+    """Fallback default benchmarks if loading fails."""
+    return {
         "framework_benchmarks": {
             "complementary_examples": [
                 {"partner": "NEAR + [Confidential Computing Partner]", "score": 6, "type": "privacy/compute layer", "description": "perfect complementary partner"},
@@ -141,22 +261,9 @@ def load_partnership_benchmarks():
         }
     }
 
-    try:
-        if os.path.exists(benchmarks_path):
-            with open(benchmarks_path, 'r') as f:
-                return json.load(f)
-        else:
-            # Create default file if it doesn't exist
-            with open(benchmarks_path, 'w') as f:
-                json.dump(default_benchmarks, f, indent=2)
-            return default_benchmarks
-    except Exception as e:
-        print(f"Warning: Could not load partnership benchmarks: {e}")
-        return default_benchmarks
-
-def format_benchmark_examples_for_prompt():
+def format_benchmark_examples_for_prompt(format_preference: str = 'auto'):
     """Format benchmark examples for use in analysis prompts."""
-    benchmarks = load_partnership_benchmarks()
+    benchmarks = load_partnership_benchmarks(format_preference)
 
     examples_text = "FRAMEWORK BENCHMARKS (for scoring reference):\n"
 
@@ -170,9 +277,9 @@ def format_benchmark_examples_for_prompt():
 
     return examples_text
 
-def get_framework_principles():
+def get_framework_principles(format_preference: str = 'auto'):
     """Get framework principles for complementary vs competitive evaluation."""
-    benchmarks = load_partnership_benchmarks()
+    benchmarks = load_partnership_benchmarks(format_preference)
     principles = benchmarks.get("framework_principles", {})
 
     complementary_signs = "\n".join([f"  - {sign}" for sign in principles.get("complementary_signs", [])])

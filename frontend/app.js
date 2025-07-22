@@ -1,4 +1,4 @@
-// NEAR Partnership Analysis Dashboard
+// NEAR Catalyst Framework Dashboard
 class PartnershipDashboard {
     constructor() {
         this.projects = [];

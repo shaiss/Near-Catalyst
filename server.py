@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-NEAR Partnership Analysis Dashboard Server
-Flask backend that serves the database data and frontend files
+NEAR Catalyst Framework Dashboard Server
+
+A Flask-based web dashboard for visualizing hackathon catalyst discovery results
+from the NEAR Catalyst Framework multi-agent system.
 """
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
@@ -356,7 +358,7 @@ def check_database():
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description='NEAR Partnership Analysis Dashboard Server')
+    parser = argparse.ArgumentParser(description='NEAR Catalyst Framework Dashboard Server')
     parser.add_argument('--host', default='127.0.0.1', help='Host address (default: 127.0.0.1)')
     parser.add_argument('--port', type=int, default=5000, help='Port number (default: 5000)')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
@@ -368,7 +370,7 @@ def main():
         check_database()
         return
     
-    print("🚀 NEAR Partnership Analysis Dashboard")
+    print("🚀 NEAR Catalyst Framework Dashboard")
     print("=" * 50)
     
     # Check database

@@ -1,0 +1,4 @@
+category,range,action,examples
+strong_candidate,+4 to +6,Green-light partnership. Strong candidate for strategic collaboration,"Phala (+6), Filecoin (+6)"
+mixed_fit,0 to +3,"Solid mid-tier fit. Worth pursuing, but may require integration polish or focused support","Chainlink (+3), ElizaOS (+3), Arweave (+2), Bitte (+2)"
+decline,< 0,Likely misaligned. Proceed with caution or decline,"0G (-4), Avalanche (-3), Solana (-1)"

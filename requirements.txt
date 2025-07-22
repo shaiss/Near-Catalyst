@@ -1,31 +1,17 @@
-# NEAR Partnership Analysis - Multi-Agent System
-# Core dependencies for the AI-powered partnership evaluation system
-
-# OpenAI API for LLM capabilities and web search
-openai>=1.30.0
-
-# HTTP requests for NEAR Catalog API
+# NEAR Partnership Analysis - Requirements
+# Main dependencies
+openai>=1.57.0  # Required for deep research models (o4-mini-deep-research-2025-06-26)
 requests>=2.31.0
-
-# Environment variable management
 python-dotenv>=1.0.0
+flask>=3.0.0
+flask-cors>=4.0.0
 
-# Web framework for dashboard backend
-Flask>=3.0.0
+# Optional dependencies for enhanced functionality
+sqlite3  # Built into Python - used for data persistence
+concurrent.futures  # Built into Python - used for parallel agent execution
 
-# CORS support for frontend-backend communication
-Flask-CORS>=4.0.0
-
-# Built-in Python modules (no installation needed):
-# - sqlite3: Database operations
-# - json: Data serialization
-# - concurrent.futures: Parallel execution
-# - argparse: Command line argument parsing
-# - datetime: Timestamp handling
-# - hashlib: Cache key generation
-# - time: Rate limiting and delays
-
-# Development and testing (optional)
-# pytest>=7.4.0
-# black>=23.0.0
-# flake8>=6.0.0 
+# Deep Research Feature:
+# - Uses OpenAI's o4-mini-deep-research-2025-06-26 model
+# - Requires DEEP_RESEARCH_CONFIG['enabled'] = True in config/config.py
+# - Cost: ~$2 per project analysis
+# - Background mode supported for long-running analysis 
