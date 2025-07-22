@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEAR Partnership Analysis Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <i class="fas fa-handshake"></i>
+                    <h1>NEAR Partnership Analysis</h1>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-card glass">
+                        <span class="stat-value" id="total-projects">-</span>
+                        <span class="stat-label">Projects Analyzed</span>
+                    </div>
+                    <div class="stat-card glass">
+                        <span class="stat-value" id="avg-score">-</span>
+                        <span class="stat-label">Average Score</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <section class="filters-section glass">
+            <div class="filter-group">
+                <label for="score-filter">Score Range:</label>
+                <select id="score-filter">
+                    <option value="all">All Scores</option>
+                    <option value="green">Green Light (+4 to +6)</option>
+                    <option value="mid">Mid Tier (0 to +3)</option>
+                    <option value="red">Misaligned (< 0)</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="search-filter">Search Projects:</label>
+                <input type="text" id="search-filter" placeholder="Search by project name...">
+            </div>
+            <div class="filter-group">
+                <button id="refresh-btn" class="btn-primary">
+                    <i class="fas fa-sync-alt"></i> Refresh Data
+                </button>
+            </div>
+        </section>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Summary Cards -->
+            <section class="summary-section">
+                <div class="summary-card glass green">
+                    <div class="card-icon"><i class="fas fa-check-circle"></i></div>
+                    <div class="card-content">
+                        <h3 id="green-count">-</h3>
+                        <p>Green Light Partners</p>
+                    </div>
+                </div>
+                <div class="summary-card glass yellow">
+                    <div class="card-icon"><i class="fas fa-clock"></i></div>
+                    <div class="card-content">
+                        <h3 id="mid-count">-</h3>
+                        <p>Mid-Tier Candidates</p>
+                    </div>
+                </div>
+                <div class="summary-card glass red">
+                    <div class="card-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="card-content">
+                        <h3 id="red-count">-</h3>
+                        <p>Misaligned Projects</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Projects List -->
+            <section class="projects-section">
+                <div class="section-header">
+                    <h2>Partnership Analysis Results</h2>
+                    <div class="view-toggle">
+                        <button id="card-view" class="btn-secondary active">
+                            <i class="fas fa-th-large"></i> Cards
+                        </button>
+                        <button id="table-view" class="btn-secondary">
+                            <i class="fas fa-table"></i> Table
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loading" class="loading-state">
+                    <div class="spinner"></div>
+                    <p>Loading partnership analysis data...</p>
+                </div>
+
+                <!-- Projects Grid -->
+                <div id="projects-grid" class="projects-grid" style="display: none;">
+                    <!-- Projects will be populated here -->
+                </div>
+
+                <!-- Projects Table -->
+                <div id="projects-table" class="projects-table" style="display: none;">
+                    <table class="glass">
+                        <thead>
+                            <tr>
+                                <th>Project</th>
+                                <th>Score</th>
+                                <th>Recommendation</th>
+                                <th>Last Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                            <!-- Table rows will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- Project Detail Modal -->
+        <div id="project-modal" class="modal">
+            <div class="modal-content glass">
+                <div class="modal-header">
+                    <h2 id="modal-title">Project Details</h2>
+                    <button id="close-modal" class="close-btn" title="Close modal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="project-overview">
+                        <div class="score-display">
+                            <div class="score-circle">
+                                <span id="modal-score">-</span>
+                                <small>/6</small>
+                            </div>
+                            <div class="recommendation">
+                                <p id="modal-recommendation">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-content-grid">
+                        <div class="left-column">
+                            <div class="question-analysis">
+                                <h3>Question-by-Question Analysis</h3>
+                                <div id="questions-breakdown">
+                                    <!-- Question breakdown will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="right-column">
+                            <div class="research-data">
+                                <h3>Research Summary</h3>
+                                <div id="research-summary" class="content-box glass">
+                                    <!-- Research summary will be populated here -->
+                                </div>
+                            </div>
+
+                            <div class="final-analysis">
+                                <h3>Final Analysis</h3>
+                                <div id="final-analysis" class="content-box glass">
+                                    <!-- Final analysis will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html> 
