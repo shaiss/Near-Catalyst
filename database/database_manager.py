@@ -33,6 +33,7 @@ class DatabaseManager:
             sqlite3.Connection: Configured database connection
         """
         conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row  # Enable column access by name
         # Apply database pragmas for optimal performance
         for pragma in DATABASE_PRAGMAS:
             conn.execute(pragma)
