@@ -331,9 +331,12 @@ class EnhancedLocalModelManager:
         if self.config.get('use_local_models', False):
             await self.ensure_model_loaded(model)
             
-            # Step 2: Route through LiteLLM to local endpoint
+            # Map OpenAI model to local model for LiteLLM routing
+            local_model = self.config['model_mapping'].get(model, model)
+            
+            # Step 2: Route through LiteLLM to local endpoint using local model name
             return litellm.completion(
-                model=f"lm_studio/{model}",  # LiteLLM's LM Studio provider prefix
+                model=f"lm_studio/{local_model}",  # Use local model name with LM Studio prefix
                 messages=messages,
                 api_base=self.config['lm_studio_base_url'],
                 **kwargs
