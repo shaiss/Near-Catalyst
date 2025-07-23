@@ -49,45 +49,35 @@ brew install --cask lm-studio
 
 ## Model Downloads by Phase
 
-### Phase 2: Your Current Model Replacements
+### Phase 2: Simplified 2-Model Setup
 
-**For your specific codebase** (based on analysis of current usage):
+**For your specific codebase** (simplified approach):
 
 ```
-1. Qwen/Qwen2.5-72B-Instruct-GGUF → Replaces gpt-4.1
+1. Qwen/Qwen2.5-72B-Instruct-GGUF → Replaces ALL gpt-4.1 usage
    - File: qwen2.5-72b-instruct-q4_k_m.gguf
    - Size: ~42GB
-   - Purpose: ResearchAgent, SummaryAgent, QuestionAgent fallback
+   - Purpose: ResearchAgent, SummaryAgent, all general tasks
    - VRAM: ~24GB
-   - Current usage: agents/research_agent.py, agents/summary_agent.py
-   - Port: 1234
+   - Usage: Most frequent calls in your codebase
 
-2. Qwen/QwQ-32B-Preview-GGUF → Replaces o4-mini (reasoning)
-   - File: qwq-32b-preview-q4_k_m.gguf  
-   - Size: ~19GB
-   - Purpose: QuestionAgent development/fallback reasoning
-   - VRAM: ~12GB
-   - Current usage: config/config.py QUESTION_AGENT_CONFIG
-   - Port: 1235
-```
-
-### Phase 3: Advanced Reasoning for Production
-
-```
-3. deepseek-ai/DeepSeek-R1-Distill-Qwen-32B-GGUF → Replaces o3 (production reasoning)
+2. deepseek-ai/DeepSeek-R1-Distill-Qwen-32B-GGUF → Replaces ALL o3 reasoning
    - File: deepseek-r1-distill-qwen-32b-q4_k_m.gguf
-   - Size: ~19GB
-   - Purpose: QuestionAgent production reasoning analysis
+   - Size: ~19GB  
+   - Purpose: QuestionAgent reasoning (consolidates o3, o4-mini fallbacks)
    - VRAM: ~12GB
-   - Current usage: config/config.py production reasoning model
-   - Supports: reasoning_content and thinking_blocks
-   - Port: 1235 (can alternate with QwQ-32B)
+   - Usage: All reasoning tasks via single model
+```
 
-4. Multi-Agent Deep Research System → Replaces o4-mini-deep-research
+### Phase 3: Deep Research Enhancement
+
+```
+3. Multi-Agent Deep Research System → Replaces o4-mini-deep-research
    - Purpose: Replace expensive $200/1M token deep research
-   - Current usage: config/config.py DEEP_RESEARCH_CONFIG
+   - Current usage: config/config.py DEEP_RESEARCH_CONFIG  
    - Implementation: Phase 3 supervisor + research agents
-   - Models: Combination of general + reasoning models above
+   - Models: Uses the same 2 models above in multi-agent coordination
+   - Enhanced with: Web search, iterative research, thinking content
 ```
 
 ### Phase 3: Specialized & Support Models
@@ -109,17 +99,14 @@ brew install --cask lm-studio
 
 **Start with these models based on your current usage**:
 
-1. **FIRST: Qwen2.5-72B-Instruct** (replaces gpt-4.1)
-   - Most used model in your codebase
-   - Used by: ResearchAgent, SummaryAgent, QuestionAgent fallback
+1. **FIRST: Qwen2.5-72B-Instruct** (replaces ALL gpt-4.1 usage)
+   - Most frequent model in your codebase
+   - Used by: ResearchAgent, SummaryAgent, all general tasks
    - Cost savings: $10/1M tokens → FREE
 
-2. **SECOND: QwQ-32B-Preview** (replaces o4-mini reasoning)  
-   - QuestionAgent development/testing reasoning
-   - Cost savings: $15/1M tokens → FREE
-
-3. **THIRD: DeepSeek-R1-Distill** (replaces o3 reasoning)
-   - QuestionAgent production reasoning  
+2. **SECOND: DeepSeek-R1-Distill** (replaces ALL o3 reasoning)
+   - Consolidated reasoning model for QuestionAgent
+   - Handles all reasoning tasks (production + fallbacks)
    - Cost savings: $60/1M tokens → FREE
 
 ### Download Instructions
@@ -131,10 +118,10 @@ brew install --cask lm-studio
 
 ### Expected Cost Savings
 **Your current monthly OpenAI spend reduction**:
-- gpt-4.1 usage → 100% savings (most frequent)
-- o4-mini reasoning → 100% savings  
-- o3 reasoning → 100% savings
+- gpt-4.1 usage → 100% savings (most frequent calls)
+- o3 reasoning → 100% savings (high-cost reasoning)
 - **Total Phase 2 savings**: Majority of your API costs
+- **Deployment**: Only 2 models to manage via single LM Studio instance
 
 ## Phase 2: Basic API Server Configuration
 
@@ -150,26 +137,28 @@ LM Studio automatically provides OpenAI-compatible endpoints:
 - **Models List**: `GET /v1/models`
 - **Health Check**: `GET /v1/models`
 
-## Phase 3: Multi-Model Setup for Deep Research
+## LM Studio Model Management (Simplified)
 
-For deep research capabilities, you'll need multiple specialized models running simultaneously:
+**Phase 2: Single API Endpoint Approach**
+- Use single port (1234) for all model requests
+- LM Studio handles model switching automatically or manually
+- Your code doesn't need to know which model is loaded
 
-**Option A: Multiple Ports**
+**Model Switching Options**:
+
+**Option A: Manual Switching** (Simpler setup)
 ```bash
-# Terminal 1: General purpose model
-lms server start qwen2.5-72b-instruct-q4_k_m.gguf --port 1234
-
-# Terminal 2: Reasoning model  
-lms server start qwq-32b-preview-q4_k_m.gguf --port 1235
-
-# Terminal 3: Fast model
-lms server start qwen2.5-32b-instruct-q4_k_m.gguf --port 1236
+# Load general model when needed
+# Load reasoning model when needed  
+# Single endpoint: http://localhost:1234/v1
 ```
 
-**Option B: Dynamic Model Loading (Phase 2 Approach)**
-- Use single port (1234) for Phase 2
-- Switch models as needed through LM Studio UI
-- Upgrade to Option A when implementing Phase 3 deep research
+**Option B: Automatic Model Loading** (Advanced)
+```bash
+# LM Studio can auto-load models based on request patterns
+# Configure model preferences in LM Studio UI
+# Same endpoint handles both model types
+```
 
 ## Phase 2: Simple LiteLLM Configuration
 
