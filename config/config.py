@@ -10,6 +10,7 @@ Features:
 - Hackathon catalyst benchmarks loader
 - Multi-agent coordination timeouts
 - Database configuration for analysis persistence
+- Phase 2: LM Studio Python SDK configuration for local models
 """
 
 import json
@@ -179,6 +180,52 @@ RECOMMENDATIONS = {
     'strong_candidate': "Strong candidate; explore MoU/co-marketing",
     'mixed_fit': "Mixed; negotiate scope",
     'decline': "Decline or redesign the collaboration"
+}
+
+# Phase 2: LiteLLM + LM Studio SDK Configuration
+LITELLM_CONFIG = {
+    'use_local_models': os.getenv('USE_LOCAL_MODELS', 'false').lower() == 'true',
+    'use_lmstudio_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
+    'lm_studio_base_url': os.getenv('LM_STUDIO_API_BASE', 'http://localhost:1234/v1'),
+    'lm_studio_api_key': os.getenv('LM_STUDIO_API_KEY', 'local-key'),
+    
+    # Phase 2: OpenAI → Local OSS Model Mapping
+    'model_mapping': {
+        # Core models (via LM Studio Python SDK + local API)
+        'gpt-4.1': 'qwen2.5-72b-instruct',                 # Research, Summary, Question agents
+        'o3': 'deepseek-r1-distill-qwen-32b',              # Question agent reasoning (production)
+        'o4-mini': 'deepseek-r1-distill-qwen-32b',         # Use same reasoning model  
+        'gpt-4': 'qwen2.5-72b-instruct',                   # General fallback
+        'gpt-4.1-mini': 'qwen2.5-72b-instruct',            # General fallback
+        'gpt-4o-search-preview': 'qwen2.5-72b-instruct',   # Research fallback (will add search later)
+        
+        # Deep research models - Phase 3 replacement targets
+        'o4-mini-deep-research-2025-06-26': 'deepseek-r1-distill-qwen-32b',  # Phase 3: Multi-agent system
+    },
+    
+    # Cost savings tracking
+    'cost_comparison': {
+        'gpt-4.1': {'openai': 0.00001, 'local': 0.0},      # $10/1M → Free
+        'o3': {'openai': 0.00006, 'local': 0.0},           # $60/1M → Free
+        'o4-mini-deep-research': {'openai': 0.0002, 'local': 0.0}  # $200/1M → Free (Phase 3)
+    }
+}
+
+# LM Studio SDK Configuration
+LMSTUDIO_CONFIG = {
+    'use_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
+    'auto_load_models': True,  # Automatically load models when needed
+    'model_load_timeout': 300,  # 5 minutes for model loading
+    'default_generation_config': {
+        'temperature': 0.1,
+        'max_tokens': 2048,
+        'top_p': 0.9
+    },
+    # Required models for Phase 2
+    'required_models': [
+        'qwen2.5-72b-instruct',      # General purpose model
+        'deepseek-r1-distill-qwen-32b'  # Reasoning model
+    ]
 }
 
 # Partnership Framework Benchmarks
