@@ -8,22 +8,23 @@ collaborators that can unlock developer potential and create "1 + 1 = 3" value p
 
 import json
 from config.config import TIMEOUTS
+from database.usage_tracker import APIUsageTracker
+from database.database_manager import DatabaseManager
 
 
 class ResearchAgent:
     """
     Agent 1: Research agent that gathers comprehensive information about projects
-    using OpenAI's web search capabilities.
+    using LiteLLM's web search capabilities with cost tracking.
     """
     
-    def __init__(self, client, db_manager=None, usage_tracker=None):
-        """Initialize the research agent with OpenAI client and usage tracking."""
-        self.client = client
+    def __init__(self, client=None, db_manager=None, usage_tracker=None):
+        """Initialize the research agent with usage tracking."""
         self.timeout = TIMEOUTS['research_agent']
         
-        # Usage tracking support (can be added later)
-        self.db_manager = db_manager
-        self.usage_tracker = usage_tracker
+        # Initialize usage tracking
+        self.db_manager = db_manager or DatabaseManager()
+        self.usage_tracker = usage_tracker or APIUsageTracker(None, self.db_manager)
     
     def analyze(self, project_name, enriched_context):
         """
@@ -36,6 +37,9 @@ class ResearchAgent:
         Returns:
             dict: Research results with content, sources, and success status
         """
+        # Set context for usage tracking
+        self.usage_tracker.set_context(project_name, "research_agent")
+        
         # Extract data from enriched context
         basic_profile = enriched_context.get('basic_profile', {})
         catalog_data = enriched_context.get('catalog_data', {})
@@ -49,58 +53,13 @@ class ResearchAgent:
         if basic_profile.get('tags'):
             tags = ', '.join(basic_profile['tags'].values()) if isinstance(basic_profile['tags'], dict) else str(basic_profile['tags'])
             context_parts.append(f"Tags: {tags}")
-        if basic_profile.get('phase'):
-            context_parts.append(f"Phase: {basic_profile['phase']}")
+        if basic_profile.get('description'):
+            context_parts.append(f"Description: {basic_profile['description']}")
         
-        # Enhanced catalog data extraction
+        # NEAR catalog data
         if catalog_data:
-            # Get profile data from catalog response
-            catalog_profile = catalog_data.get('profile', {})
-            
-            # Core project info
-            if catalog_profile.get('description'):
-                context_parts.append(f"Description: {catalog_profile['description'][:500]}...")  # Truncate long descriptions
-            
-            # CRITICAL: Live dApp URL for research guidance
-            if catalog_profile.get('dapp'):
-                context_parts.append(f"Live dApp: {catalog_profile['dapp']}")
-            
-            # Social and development links
-            if catalog_profile.get('linktree'):
-                linktree = catalog_profile['linktree']
-                social_links = []
-                for platform, url in linktree.items():
-                    if url and url.strip():  # Only include non-empty URLs
-                        social_links.append(f"{platform}: {url}")
-                if social_links:
-                    context_parts.append(f"Social Links: {', '.join(social_links[:5])}")  # Limit to 5 links to avoid token bloat
-            
-            # Technical infrastructure
-            if catalog_data.get('contracts'):
-                contracts = catalog_data['contracts']
-                if isinstance(contracts, dict):
-                    contract_list = [f"{name}: {addr}" for name, addr in contracts.items() if addr and addr.strip()]
-                    if contract_list:
-                        context_parts.append(f"Smart Contracts: {', '.join(contract_list)}")
-                elif isinstance(contracts, list) and contracts:
-                    context_parts.append(f"Smart Contracts: {', '.join(contracts)}")
-            
-            # Token information
-            if catalog_data.get('tokens'):
-                tokens = catalog_data['tokens']
-                if isinstance(tokens, dict):
-                    token_details = []
-                    for token_key, token_info in tokens.items():
-                        if isinstance(token_info, dict) and token_info.get('symbol'):
-                            token_details.append(f"{token_info.get('symbol')} ({token_info.get('name', 'Unknown')})")
-                    if token_details:
-                        context_parts.append(f"Tokens: {', '.join(token_details)}")
-            
-            # Community engagement metrics
-            if catalog_profile.get('lnc') and str(catalog_profile['lnc']).strip():
-                context_parts.append(f"Learn NEAR Club Score: {catalog_profile['lnc']}")
-            
-            # Legacy support for direct catalog fields (backward compatibility)
+            if catalog_data.get('description'):
+                context_parts.append(f"Catalog Description: {catalog_data['description']}")
             if catalog_data.get('category'):
                 context_parts.append(f"Category: {catalog_data['category']}")
             if catalog_data.get('stage'):
@@ -111,57 +70,27 @@ class ResearchAgent:
                 context_parts.append(f"Website: {catalog_data['website']}")
             if catalog_data.get('github'):
                 context_parts.append(f"GitHub: {catalog_data['github']}")
-            if catalog_data.get('blockchain_networks'):
-                context_parts.append(f"Blockchain Networks: {catalog_data['blockchain_networks']}")
-            if catalog_data.get('team_size'):
-                context_parts.append(f"Team Size: {catalog_data['team_size']}")
-            if catalog_data.get('founded'):
-                context_parts.append(f"Founded: {catalog_data['founded']}")
         
-        known_context = '\n'.join(context_parts) if context_parts else "Limited project information available"
+        context_string = "\n".join(context_parts) if context_parts else f"Limited information available about {project_name}"
         
-        # Check if we have a live dApp URL for enhanced research guidance
-        dapp_guidance = ""
-        if catalog_data and catalog_data.get('profile', {}).get('dapp'):
-            dapp_url = catalog_data['profile']['dapp']
-            dapp_guidance = f"\n🎯 LIVE DAPP AVAILABLE: {dapp_url}\nUse this to verify current functionality, developer integration patterns, and user experience. This provides concrete evidence for your analysis.\n"
-
+        # Build comprehensive research prompt
         research_prompt = f"""
-Research the project "{project_name}" for NEAR Catalyst Framework evaluation using the "1+1=3" discovery methodology.
+As a NEAR Protocol Partnership Scout, conduct comprehensive research on "{project_name}" to evaluate its potential as a hackathon catalyst partner.
 
-KNOWN PROJECT INFORMATION FROM NEAR CATALOG:
-{known_context}
-{dapp_guidance}
-Your research should focus on identifying hackathon co-creation partners that can unlock developer potential 
-and create exponential value during NEAR hackathons and developer events.
+Known Information:
+{context_string}
 
-Key Research Areas:
-1. Core technology and unique capabilities that complement NEAR's strengths
-2. Developer tools, SDKs, and integration resources for hackathon participants
-3. Target developer audience and technical complexity for rapid prototyping
-4. Previous blockchain integrations or Web3 hackathon participation examples
-5. Technical integration patterns with blockchain/Web3 (APIs, SDKs, libraries)
-6. Ease of developer onboarding and learning curve for hackathon timeframes
-7. Documentation quality and availability of tutorials/sample code
-8. Community engagement with developers (Discord, forums, GitHub activity)
-9. Track record of supporting developer events, hackathons, or educational initiatives
-10. Alignment with NEAR's target audience (Web3 developers, dApp builders)
-11. Hackathon support history - mentors, bounties, hands-on participation
+Your goal is to discover if this project can enable "1 + 1 = 3" value propositions for NEAR hackathon developers. 
 
-Focus your research on hackathon catalyst potential as a force multiplier for NEAR developers:
-- Can this technology unlock new use cases when combined with NEAR?
-- Does it fill capability gaps that NEAR developers commonly face?
-- Is there clear documentation and tooling for hackathon-speed integration?
-- What is the learning curve for developers new to this technology?
+Focus your research on:
+1. **Technology Complementarity**: How does this technology fill gaps or enhance NEAR's capabilities?
+2. **Developer Experience**: What tools, SDKs, or resources do they provide for developers?
+3. **Hackathon Readiness**: Can this be integrated quickly during a 48-72 hour hackathon?
+4. **Community & Support**: What kind of developer support and mentorship do they offer?
+5. **Past Collaborations**: Any history of successful hackathon partnerships or developer programs?
+6. **Innovation Potential**: What new use cases or proof-points could this enable for NEAR?
 
-RED FLAGS to identify and report:
-- Complex enterprise-only solutions that don't fit hackathon timeframes
-- Poor developer experience or lack of self-service onboarding
-- "Logo on a slide" partnerships with no technical substance
-- Technologies that compete directly with NEAR's core capabilities
-- Lack of developer-facing resources or community engagement
-
-Focus on factual, verifiable information. Provide links to documentation, GitHub repos, 
+Research using web search to find documentation, developer guides, GitHub repositories, 
 blog posts, and other official sources wherever possible.
 
 Since I already have some project details from NEAR catalog, use web search to find additional 
@@ -170,37 +99,17 @@ that would help evaluate this as a NEAR catalyst partner.
 """
         
         try:
-            research_response = self.client.responses.create(
+            # Use LiteLLM through usage tracker for cost tracking
+            research_response = self.usage_tracker.track_chat_completions_create(
                 model="gpt-4.1",
-                tools=[{
-                    "type": "web_search_preview",
-                    "search_context_size": "high"
-                }],
-                input=research_prompt,
+                operation_type="research",
+                messages=[{"role": "user", "content": research_prompt}],
                 timeout=self.timeout
             )
             
-            research_content = ""
-            sources = []
-            
-            for item in research_response.output:
-                if item.type == "message":
-                    # Look for output_text content according to OpenAI docs
-                    for content_item in item.content:
-                        if content_item.type == "output_text":
-                            research_content = content_item.text
-                            # Extract sources/citations if available
-                            if hasattr(content_item, 'annotations'):
-                                for annotation in content_item.annotations:
-                                    if annotation.type == "url_citation":
-                                        sources.append({
-                                            "url": annotation.url,
-                                            "title": getattr(annotation, 'title', 'No title'),
-                                            "start_index": annotation.start_index,
-                                            "end_index": annotation.end_index
-                                        })
-                            break
-                    break
+            # Extract response content (LiteLLM returns OpenAI-compatible format)
+            research_content = research_response.choices[0].message.content
+            sources = []  # Web search sources will be handled in future phases
                     
             return {
                 "content": research_content,
@@ -209,22 +118,9 @@ that would help evaluate this as a NEAR catalyst partner.
             }
             
         except Exception as e:
-            print(f"  WARNING: General research failed: {e}")
-            
-            # Create fallback content with available information
-            fallback_parts = [f"Basic info - {project_name}"]
-            if basic_profile.get('tagline'):
-                fallback_parts.append(f"Tagline: {basic_profile['tagline']}")
-            if basic_profile.get('tags'):
-                tags = ', '.join(basic_profile['tags'].values()) if isinstance(basic_profile['tags'], dict) else str(basic_profile['tags'])
-                fallback_parts.append(f"Tags: {tags}")
-            if basic_profile.get('phase'):
-                fallback_parts.append(f"Phase: {basic_profile['phase']}")
-            
-            fallback_content = '. '.join(fallback_parts)
-            
+            print(f"      ❌ Research failed: {str(e)}")
             return {
-                "content": fallback_content,
+                "content": f"Research failed: {str(e)}",
                 "sources": [],
                 "success": False,
                 "error": str(e)
