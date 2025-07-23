@@ -421,8 +421,15 @@ CMD ["./lmstudio.AppImage", "server", "start", "--port", "1234"]
 4. **🚀 Start Server**: Load model and start local server on port 1234
 5. **⚙️ Set Environment**: `export OPENAI_API_BASE=http://localhost:1234/v1`
 6. **🧪 Test**: Run your existing agents - they'll use local models automatically
-7. **🧠 Test Reasoning**: Verify reasoning content with o-series models
+7. **🧠 Test Reasoning**: Verify reasoning content with o-series models  
 8. **📊 Monitor Usage**: LiteLLM automatically tracks costs and usage
+
+### Phase 3: Deep Research Setup
+9. **🏗️ Multi-Model Setup**: Run both general and reasoning models simultaneously
+10. **🔧 Deep Research Architecture**: Implement supervisor + research agent pattern
+11. **🌐 Search Integration**: Configure Tavily, SearXNG, or other search engines
+12. **🔄 Replace o3/o4 Deep Research**: Use local reasoning models instead of OpenAI
+13. **🧪 Test Deep Research**: Verify multi-agent coordination works locally
 
 ## Expected Results
 
@@ -439,6 +446,49 @@ CMD ["./lmstudio.AppImage", "server", "start", "--port", "1234"]
 - **Web Search**: Built-in web search capabilities via LiteLLM
 - **Native Usage Tracking**: Automatic cost and usage monitoring
 - **Easy Scaling**: Add multiple models or fallbacks via config
+
+### Phase 3: Deep Research Multi-Model Setup
+
+**Running Multiple Models Simultaneously for Deep Research**:
+
+1. **General Model** (Port 1234): Qwen2.5-72B for general tasks
+2. **Reasoning Model** (Port 1235): QwQ-32B for deep research with thinking content
+
+```bash
+# Terminal 1: Start general model
+cd /path/to/lmstudio
+./bin/lms load qwen2.5-72b-instruct --port 1234
+
+# Terminal 2: Start reasoning model  
+./bin/lms load qwq-32b-preview --port 1235
+```
+
+**Configuration for Multi-Agent Deep Research**:
+```python
+# Configure different endpoints for different tasks
+GENERAL_MODEL_BASE = "http://localhost:1234/v1"
+REASONING_MODEL_BASE = "http://localhost:1235/v1"
+
+# Deep research supervisor can route to appropriate models
+general_response = litellm.completion(
+    model="qwen2.5-72b-instruct",
+    api_base=GENERAL_MODEL_BASE,
+    messages=[{"role": "user", "content": "Generate research plan"}]
+)
+
+reasoning_response = litellm.completion(
+    model="qwq-32b-preview", 
+    api_base=REASONING_MODEL_BASE,
+    messages=[{"role": "user", "content": "Analyze complex data"}],
+    reasoning_effort="high"  # Access thinking content
+)
+```
+
+**Benefits of Multi-Model Setup**:
+- **Specialization**: Each model optimized for specific tasks
+- **Performance**: Parallel processing of general and reasoning tasks
+- **Cost-effective**: No OpenAI o3/o4 API costs
+- **Local**: Complete privacy and control over deep research process
 
 Your AI agents won't know they switched from OpenAI to local models - that's the power of LiteLLM's unified interface!
 

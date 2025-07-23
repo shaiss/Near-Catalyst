@@ -293,6 +293,129 @@ class EnhancedResearchAgent:
 
 ---
 
+### 7. Phase 3: Deep Research Architecture Design
+
+**Your Task**: Create LiteLLM-compatible deep research system (replaces OpenAI o3/o4 deep research)
+
+#### A. Core Architecture Pattern (Borrowed from open-deep-research)
+
+```python
+# agents/deep_research_supervisor.py
+import litellm
+from typing import List, Dict, Any
+
+class DeepResearchSupervisor:
+    def __init__(self, local_model_base_url: str = "http://localhost:1234/v1"):
+        self.local_base_url = local_model_base_url
+    
+    async def conduct_deep_research(self, research_brief: str) -> Dict[str, Any]:
+        """
+        Supervisor coordinates multiple research agents using LiteLLM
+        Architecture borrowed from open-deep-research but LiteLLM-native
+        """
+        # Step 1: Break down research into sub-topics
+        sub_topics = await self._generate_research_plan(research_brief)
+        
+        # Step 2: Coordinate parallel research (like open-deep-research)
+        research_results = await self._coordinate_research_agents(sub_topics)
+        
+        # Step 3: Synthesize final report
+        final_report = await self._synthesize_report(research_brief, research_results)
+        
+        return {
+            "report": final_report,
+            "sources": research_results,
+            "methodology": "multi-agent-litellm"
+        }
+```
+
+#### B. Research Agent Implementation
+
+```python
+# agents/research_agent.py
+import litellm
+import asyncio
+
+class LiteLLMResearchAgent:
+    def __init__(self, agent_id: str, reasoning_model: str = "openai/qwq-32b-preview"):
+        self.agent_id = agent_id
+        self.reasoning_model = reasoning_model
+    
+    async def research_subtopic(self, subtopic: str, search_engines: List[str]) -> Dict:
+        """
+        Individual research agent using local reasoning models
+        """
+        # Use reasoning model for research planning
+        research_plan = await self._plan_research(subtopic)
+        
+        # Execute searches across multiple engines
+        search_results = await self._execute_searches(research_plan, search_engines)
+        
+        # Use reasoning content for analysis
+        analysis = await self._analyze_with_reasoning(search_results, subtopic)
+        
+        return {
+            "subtopic": subtopic,
+            "findings": analysis,
+            "sources": search_results,
+            "reasoning_trace": analysis.get("reasoning_content", "")
+        }
+    
+    async def _analyze_with_reasoning(self, search_results: List, subtopic: str) -> Dict:
+        """Use local reasoning model with thinking content"""
+        response = litellm.completion(
+            model=self.reasoning_model,
+            messages=[{
+                "role": "user", 
+                "content": f"Analyze search results for {subtopic}: {search_results}"
+            }],
+            reasoning_effort="medium",  # Access thinking process
+            api_base="http://localhost:1234/v1"
+        )
+        
+        return {
+            "analysis": response.choices[0].message.content,
+            "reasoning_content": response.choices[0].message.reasoning_content,
+            "thinking_blocks": response.choices[0].message.thinking_blocks
+        }
+```
+
+#### C. Integration with Existing System
+
+```python
+# Update agents/deep_research_agent.py to use LiteLLM supervisor
+from agents.deep_research_supervisor import DeepResearchSupervisor
+
+class DeepResearchAgent:
+    def __init__(self):
+        self.supervisor = DeepResearchSupervisor()
+    
+    async def conduct_deep_research(self, project_name: str, general_research: str) -> Dict:
+        """
+        Replace OpenAI o3/o4 calls with local reasoning model system
+        """
+        research_brief = f"Deep research on {project_name}: {general_research}"
+        
+        # Use supervisor to coordinate local reasoning models
+        result = await self.supervisor.conduct_deep_research(research_brief)
+        
+        return {
+            "project_name": project_name,
+            "analysis": result["report"],
+            "sources": result["sources"],
+            "methodology": "local-deep-research-litellm"
+        }
+```
+
+**Why This Approach**:
+- **No LangChain**: Direct LiteLLM calls only
+- **Borrows proven patterns**: From open-deep-research supervisor architecture
+- **Local reasoning**: QwQ-32B/DeepSeek-R1 with thinking content
+- **Cost effective**: No OpenAI o3/o4 API costs
+- **Same interface**: Drop-in replacement for existing DeepResearchAgent
+
+---
+
 ## Testing & Validation
 
 ### 7. Create Test Scripts
@@ -373,7 +496,15 @@ litellm>=1.74.0
 3. **Week 4**: Test local models with same interface
 4. **Week 5**: Performance optimization and monitoring
 
-**Note**: Phase 1 keeps using OpenAI models through LiteLLM. Phase 2 switches to local models.
+### Phase 3: Deep Research Architecture (Week 6-8)
+1. **Week 6**: Design LiteLLM-compatible deep research system
+2. **Week 7**: Build supervisor + research agent pattern (no LangChain)
+3. **Week 8**: Replace OpenAI o3/o4 deep research with local reasoning models
+
+**Note**: 
+- Phase 1: OpenAI models through LiteLLM
+- Phase 2: Local models via LM Studio  
+- Phase 3: Deep research replacement using open-deep-research patterns
 
 ---
 
@@ -395,6 +526,14 @@ litellm>=1.74.0
 - **Native cost tracking** via LiteLLM (replaces custom tracking)
 - Performance meets or exceeds OpenAI
 
+### Phase 3 Complete When
+- **Deep research system** built using LiteLLM (no LangChain abstractions)
+- **Supervisor architecture** coordinates multiple research agents via `litellm.completion()`
+- **Local reasoning models** (QwQ-32B, DeepSeek-R1) replace OpenAI o3/o4 deep research
+- **Multi-agent coordination** using direct LiteLLM calls and simple orchestration
+- **Web search integration** with multiple engines (Tavily, SearXNG, etc.)
+- **Iterative research loops** with thinking content from local models
+
 ### Validation Checklist
 - [ ] `litellm.completion()` returns same format as OpenAI
 - [ ] All agent files updated (no more `from openai import OpenAI`)
@@ -405,6 +544,9 @@ litellm>=1.74.0
 - [ ] Requirements.txt includes LiteLLM
 - [ ] **Phase 2**: Reasoning content and web search ready
 - [ ] **Phase 2**: Custom usage tracking replaced with LiteLLM native tracking
+- [ ] **Phase 3**: Deep research supervisor coordinates research agents
+- [ ] **Phase 3**: Local reasoning models replace OpenAI o3/o4 deep research
+- [ ] **Phase 3**: Multi-agent system uses only LiteLLM (no LangChain)
 
 ---
 
