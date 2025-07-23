@@ -177,12 +177,15 @@ class LMStudioModelManager:
     
     async def ensure_model_loaded(self, model_name: str) -> bool:
         """Load model if not already loaded"""
+        # For LM Studio setup, model_name is already the local model identifier
+        # Check if already in cache
         if model_name in self.loaded_models:
             return True
             
         # Check if already loaded in backend
         loaded = await self.client.models.list_loaded()
         if any(m.identifier == model_name for m in loaded):
+            # Model is loaded in backend but not in our cache, update cache
             self.loaded_models[model_name] = True
             return True
             
@@ -190,7 +193,7 @@ class LMStudioModelManager:
         try:
             config = self.model_configs.get(model_name, {})
             model = await self.client.models.load(model_name, config=config)
-            self.loaded_models[model_name] = model
+            self.loaded_models[model_name] = model  # Cache using local model name
             print(f"✓ Loaded {model_name}")
             return True
         except Exception as e:
@@ -249,12 +252,12 @@ class EnhancedCompletion:
         # Map OpenAI model to local model
         local_model = self.model_mapping.get(model, model)
         
-        # Ensure model is loaded via LM Studio SDK
+        # Ensure model is loaded via LM Studio SDK (using local model name)
         await self.model_manager.ensure_model_loaded(local_model)
         
-        # Route through LiteLLM to LM Studio's OpenAI-compatible API
+        # Route through LiteLLM to LM Studio's OpenAI-compatible API using local model name
         return litellm.completion(
-            model=f"lm_studio/{local_model}",
+            model=f"lm_studio/{local_model}",  # Use local model name with LM Studio prefix
             messages=messages,
             api_base="http://localhost:1234/v1",
             api_key="local-key",  # Not validated by local server
