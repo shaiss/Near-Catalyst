@@ -303,15 +303,20 @@ class EnhancedLocalModelManager:
         # Map OpenAI model to local model
         local_model = self.config['model_mapping'].get(model_name, model_name)
         
-        # Check if model is already loaded
+        # Check if model is already loaded (check both cache and backend)
+        if local_model in self.loaded_models:
+            return True
+            
         loaded_models = await self.lms_client.models.list_loaded()
         if any(m.identifier == local_model for m in loaded_models):
+            # Model is loaded in backend but not in our cache, update cache
+            self.loaded_models[local_model] = True
             return True
             
         # Load model programmatically
         try:
             model = await self.lms_client.models.load(local_model)
-            self.loaded_models[model_name] = model
+            self.loaded_models[local_model] = model  # Cache using local model name
             print(f"✓ Loaded local model: {local_model} for {model_name}")
             return True
         except Exception as e:
