@@ -7,7 +7,6 @@ collaborators that can unlock developer potential and create "1 + 1 = 3" value p
 """
 
 import json
-import litellm
 from config.config import TIMEOUTS
 from database.usage_tracker import APIUsageTracker
 from database.database_manager import DatabaseManager

@@ -17,7 +17,6 @@ import sqlite3
 import hashlib
 import time
 import os
-import litellm
 from datetime import datetime
 
 from config.config import TIMEOUTS, PARALLEL_CONFIG, QUESTION_AGENT_CONFIG, format_benchmark_examples_for_prompt, get_framework_principles

@@ -7,7 +7,6 @@ determining which partners can unlock developer potential and create exponential
 """
 
 import json
-import litellm
 from config.config import DIAGNOSTIC_QUESTIONS, TIMEOUTS, SCORE_THRESHOLDS, RECOMMENDATIONS, load_partnership_benchmarks
 from database.usage_tracker import APIUsageTracker
 from database.database_manager import DatabaseManager

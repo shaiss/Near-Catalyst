@@ -25,6 +25,19 @@ class DatabaseManager:
         """Initialize the database manager."""
         self.db_path = db_path or DATABASE_NAME
     
+    def get_db_connection(self):
+        """
+        Get a database connection with proper configuration.
+        
+        Returns:
+            sqlite3.Connection: Configured database connection
+        """
+        conn = sqlite3.connect(self.db_path)
+        # Apply database pragmas for optimal performance
+        for pragma in DATABASE_PRAGMAS:
+            conn.execute(pragma)
+        return conn
+
     def initialize_database(self):
         """Initialize database with required tables and return connection."""
         conn = sqlite3.connect(self.db_path)

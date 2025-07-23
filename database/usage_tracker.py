@@ -274,8 +274,9 @@ class APIUsageTracker:
             print("No active project context for summary")
             return
             
+        conn = None
         try:
-            conn = sqlite3.connect(self.db_manager.db_path)
+            conn = self.db_manager.get_db_connection()
             cursor = conn.cursor()
             
             # Get session summary
@@ -325,7 +326,7 @@ class APIUsageTracker:
                 
                 agent_breakdown = cursor.fetchall()
                 if agent_breakdown:
-                    print(f"   Agent Breakdown:")
+                    print("   Agent Breakdown:")
                     for agent_type, calls, tokens, cost in agent_breakdown:
                         print(f"     • {agent_type}: {calls} calls, {tokens:,} tokens, ${cost:.4f}")
                 
@@ -344,17 +345,18 @@ class APIUsageTracker:
                 
                 model_breakdown = cursor.fetchall()
                 if model_breakdown:
-                    print(f"   Model Breakdown:")
+                    print("   Model Breakdown:")
                     for model_name, calls, tokens, cost in model_breakdown:
                         print(f"     • {model_name}: {calls} calls, {tokens:,} tokens, ${cost:.4f}")
                         
             else:
                 print("No usage data found for current session")
                 
-            conn.close()
-            
         except Exception as e:
             print(f"Error generating session summary: {e}")
+        finally:
+            if conn:
+                conn.close()
 
 
 # Backwards compatibility aliases

@@ -7,7 +7,7 @@ LiteLLM with cost tracking. It builds upon the general research to create compre
 reports at the level of a research analyst.
 
 Features:
-- Uses o4-mini-deep-research converted to o4-mini for cost-effective deep research
+- Uses o4-mini for cost-effective deep research
 - GPT-4.1 priming to enhance research quality
 - Background mode for long-running analysis
 - Isolated functionality for future model expansion
@@ -16,7 +16,6 @@ Features:
 
 import json
 import time
-import litellm
 from config.config import DEEP_RESEARCH_CONFIG, TIMEOUTS
 from database.usage_tracker import APIUsageTracker
 from database.database_manager import DatabaseManager
@@ -157,12 +156,8 @@ Focus on factual, verifiable information from official sources, documentation, a
             # Step 2: Execute deep research
             print(f"  🌐 Executing deep research (this may take several minutes)...")
             
-            # Convert o4-mini-deep-research to o4-mini for LiteLLM compatibility
-            model_name = self.config['model']
-            if model_name == 'o4-mini-deep-research-2025-06-26':
-                model_name = 'o4-mini'
-            
             # Execute deep research using LiteLLM with usage tracking
+            model_name = self.config['model']  # Use configured model directly - no conversion needed
             print(f"  🔬 Executing deep research with {model_name}...")
             deep_research_response = self.usage_tracker.track_chat_completions_create(
                 model=model_name,

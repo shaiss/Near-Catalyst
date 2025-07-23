@@ -89,7 +89,7 @@ TIMEOUTS = {
 # Deep Research Configuration
 DEEP_RESEARCH_CONFIG = {
     'enabled': False,  # Off by default due to cost ($2 per input)
-    'model': 'o4-mini-deep-research-2025-06-26',  # Cost-effective deep research model as requested
+    'model': 'o4-mini',  # Use standard LiteLLM model name directly
     'priming_model': 'gpt-4.1',  # Model to prime the deep research agent
     'use_cached_input': True,  # Use cached input to reduce costs
     'max_tool_calls': 50,  # Limit tool calls to control cost and latency
