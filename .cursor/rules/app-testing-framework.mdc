@@ -1,0 +1,202 @@
+---
+title: NEAR Catalyst Framework - Comprehensive Testing Guide
+---
+
+# NEAR Catalyst Framework - Comprehensive Testing Guide
+
+This rule provides a standardized testing framework for validating the NEAR Catalyst Framework application after code changes, database improvements, or new feature implementations.
+
+## 🔧 Pre-Testing Environment Setup
+
+### 1. Virtual Environment Reset
+```bash
+# Clean slate environment setup
+rm -rf venv && python3 -m venv venv --clear
+source venv/bin/activate && python3 -m pip install -r requirements.txt
+```
+
+### 2. Verify Installation
+```bash
+source venv/bin/activate && python3 --version
+# Should show Python 3.13+ with (venv) prefix
+```
+
+## 🗃️ Database Testing Phase
+
+### 1. Database Clearing & Reset
+```bash
+source venv/bin/activate && python3 analyze_projects_multi_agent_v2.py --clear all
+# ✅ Should prompt for confirmation and clear all records
+```
+
+### 2. Database Structure Validation
+```bash
+source venv/bin/activate && python3 analyze_projects_multi_agent_v2.py --list
+# ✅ Should show empty database or list existing projects
+```
+
+## 🧪 Analysis Script Testing
+
+### 1. Research-Only Analysis (Fast Test)
+```bash
+source venv/bin/activate && python3 analyze_projects_multi_agent_v2.py --limit 2 --research-only
+```
+**Expected Results:**
+- ✅ Environment setup complete
+- ✅ LiteLLM cost tracking working
+- ✅ Research agents completing successfully
+- ✅ Data stored in database
+- ✅ Export JSON generated
+
+### 2. Complete Analysis (Full Test)
+```bash
+source venv/bin/activate && python3 analyze_projects_multi_agent_v2.py --limit 1
+```
+**Expected Results:**
+- ✅ All 8 agents executing (Research → 6 Questions → Summary)
+- ✅ Parallel question execution completing
+- ✅ Final scoring and recommendations generated
+- ✅ Cost tracking showing reasonable amounts ($0.05-$0.15 per project)
+- ✅ 100% API success rate
+- ✅ Session summary with agent/model breakdown
+
+### 3. Caching Test (Efficiency Validation)
+```bash
+source venv/bin/activate && python3 analyze_projects_multi_agent_v2.py --limit 1 --research-only
+```
+**Expected Results:**
+- ✅ Should skip analysis (< 24h old)
+- ✅ Very fast completion (< 1 second)
+- ✅ Export still generated
+
+## 🌐 Server & API Testing
+
+### 1. Database Validation Check
+```bash
+source venv/bin/activate && python3 server.py --port 8435 --check-db
+```
+**Expected Results:**
+- ✅ "Database found with N projects analyzed"
+
+### 2. Server Startup
+```bash
+source venv/bin/activate && python3 server.py --port 8435 --host 127.0.0.1 > server.log 2>&1 &
+sleep 3  # Allow server startup time
+```
+
+### 3. API Endpoint Testing
+```bash
+# Health Check
+curl -s http://127.0.0.1:8435/api/health
+# ✅ Expected: {"status":"healthy","database":"connected","projects_count":N}
+
+# Projects List
+curl -s http://127.0.0.1:8435/api/projects
+# ✅ Expected: JSON array with project summaries
+
+# Project Details (replace "Rhea%20Finance" with actual project name)
+curl -s http://127.0.0.1:8435/api/project/Rhea%20Finance | head -50
+# ✅ Expected: Detailed JSON with analysis, research, questions, usage data
+
+# Statistics
+curl -s http://127.0.0.1:8435/api/stats
+# ✅ Expected: {"avg_score":N,"total_projects":N,"mid_tier":N,...}
+```
+
+### 4. Server Cleanup
+```bash
+pkill -f "python3 server.py"
+```
+
+## 🔍 Code Quality Validation
+
+### 1. Check for Unused Imports
+```bash
+grep -r "import litellm" agents/
+# ✅ Should only appear in usage_tracker.py, not in agent files
+```
+
+### 2. Check for Direct Database Connections
+```bash
+grep -r "sqlite3\.connect" --include="*.py" . | grep -v archive/ | grep -v server.py | grep -v database_manager.py
+# ✅ Should only show database_manager.py and server.py (not agents or usage_tracker)
+```
+
+### 3. Verify Requirements
+```bash
+source venv/bin/activate && python3 -c "
+from agents.summary_agent import SummaryAgent
+from agents.research_agent import ResearchAgent  
+from agents.question_agent import QuestionAgent
+from agents.deep_research_agent import DeepResearchAgent
+print('✅ All agent imports working correctly')
+"
+```
+
+## 📊 Performance Benchmarks
+
+### Expected Performance Metrics:
+- **Analysis Cost**: $0.05-$0.15 per complete project analysis
+- **API Success Rate**: 100% (no failed calls)
+- **Research Time**: 30-60 seconds per project
+- **Question Analysis**: 15-30 seconds per question (parallel)
+- **Server Response**: < 1 second for API calls
+- **Database Operations**: No connection leaks or errors
+
+### Expected File Outputs:
+- **Database**: `project_analyses_multi_agent.db` (should grow with data)
+- **Exports**: `multi_agent_analyses_YYYYMMDD_HHMMSS.json` (10-20KB per project)
+- **Logs**: Clean output with cost tracking summaries
+
+## 🚨 Failure Indicators
+
+**Red Flags to Watch For:**
+- ❌ Module import errors (missing dependencies)
+- ❌ Database connection errors or leaks
+- ❌ API call failures or timeout errors
+- ❌ Cost tracking showing $0.00 or unrealistic amounts
+- ❌ Server 500 errors or connection refused
+- ❌ Empty database after analysis completion
+- ❌ Export files with minimal data (< 1KB)
+
+## 🎯 Quick Smoke Test (5 minutes)
+
+For rapid validation after minor changes:
+
+```bash
+# 1. Environment check
+source venv/bin/activate && python3 --version
+
+# 2. Clear & test database
+python3 analyze_projects_multi_agent_v2.py --clear all
+
+# 3. Quick research test
+python3 analyze_projects_multi_agent_v2.py --limit 1 --research-only
+
+# 4. API test
+python3 server.py --check-db && echo "✅ Database OK"
+
+# 5. Code quality check
+grep -c "import litellm" agents/*.py | grep -v ":0" && echo "❌ Unused imports found" || echo "✅ No unused imports"
+```
+
+## 📝 Testing Checklist
+
+- [ ] Virtual environment recreated and dependencies installed
+- [ ] Database operations (clear/list) working
+- [ ] Research-only analysis completes successfully
+- [ ] Complete analysis with all agents working
+- [ ] Cost tracking showing reasonable amounts
+- [ ] Server starts and responds to API calls
+- [ ] All API endpoints returning valid JSON
+- [ ] No unused imports in agent files
+- [ ] No direct sqlite3.connect calls in wrong places
+- [ ] Export files generated with complete data
+- [ ] Performance metrics within expected ranges
+
+## 🔄 Regular Testing Schedule
+
+- **After Code Changes**: Run Quick Smoke Test
+- **Before Commits**: Run Database + Analysis Testing
+- **Before Releases**: Run Full Comprehensive Test
+- **Weekly**: Run complete test suite to catch regressions
