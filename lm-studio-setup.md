@@ -1,10 +1,15 @@
-# LM Studio Setup Guide for LiteLLM Integration
+# LM Studio Setup Guide: 3-Phase Local Model Migration
 
 ## Overview
 
-This guide will help you set up LM Studio to serve local models with OpenAI-compatible endpoints that work seamlessly with LiteLLM. This is **Phase 2** of the migration - after you've already replaced OpenAI imports with LiteLLM.
+This guide covers **Phase 2** and **Phase 3** of your migration to local models with deep research capabilities.
 
-**Prerequisites**: Your AI agents should already be using `litellm.completion()` calls instead of OpenAI client calls.
+**Migration Flow**:
+- **Phase 1**: ✅ OpenAI → LiteLLM (completed first)
+- **Phase 2**: 🎯 LiteLLM → Local Models (this guide)
+- **Phase 3**: 🚀 Multi-Agent Deep Research (advanced setup)
+
+**Prerequisites**: Your AI agents should already be using `litellm.completion()` calls from Phase 1.
 
 ## Hardware Requirements
 
@@ -42,11 +47,9 @@ brew install --cask lm-studio
 4. Set GPU memory allocation to 90-95%
 5. Verify GPU detection shows your hardware
 
-## Model Downloads
+## Model Downloads by Phase
 
-### Priority Models for Your System
-
-**Phase 1: Basic Functionality**
+### Phase 2: Basic Local Models
 ```
 1. Qwen/Qwen2.5-72B-Instruct-GGUF
    - File: qwen2.5-72b-instruct-q4_k_m.gguf
@@ -61,7 +64,7 @@ brew install --cask lm-studio
    - VRAM: ~22GB
 ```
 
-**Phase 2: Reasoning Models with Thinking Content**
+### Phase 3: Reasoning Models for Deep Research
 ```
 3. Qwen/QwQ-32B-Preview-GGUF
    - File: qwq-32b-preview-q4_k_m.gguf
@@ -78,7 +81,7 @@ brew install --cask lm-studio
    - Supports: reasoning_content and thinking_blocks
 ```
 
-**Phase 3: Specialized Models**
+### Phase 3: Specialized & Support Models
 ```
 5. deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct-GGUF
    - File: deepseek-coder-v2-lite-instruct-q4_k_m.gguf
@@ -100,9 +103,9 @@ brew install --cask lm-studio
 4. Click download for the Q4_K_M quantized version
 5. Models will download to `~/.cache/lm-studio/models/`
 
-## API Server Configuration
+## Phase 2: Basic API Server Configuration
 
-### Step 1: Enable Server Mode
+### Step 1: Single Model Setup (Phase 2)
 1. In LM Studio, go to "Local Server" tab
 2. Load your primary model (start with Qwen2.5-72B-Instruct)
 3. Click "Start Server"
@@ -114,8 +117,9 @@ LM Studio automatically provides OpenAI-compatible endpoints:
 - **Models List**: `GET /v1/models`
 - **Health Check**: `GET /v1/models`
 
-### Step 3: Multi-Model Setup
-For production, you'll want multiple model instances:
+## Phase 3: Multi-Model Setup for Deep Research
+
+For deep research capabilities, you'll need multiple specialized models running simultaneously:
 
 **Option A: Multiple Ports**
 ```bash
@@ -129,14 +133,14 @@ lms server start qwq-32b-preview-q4_k_m.gguf --port 1235
 lms server start qwen2.5-32b-instruct-q4_k_m.gguf --port 1236
 ```
 
-**Option B: Model Switching (Simpler)**
-- Use single port (1234)
+**Option B: Dynamic Model Loading (Phase 2 Approach)**
+- Use single port (1234) for Phase 2
 - Switch models as needed through LM Studio UI
-- LiteLLM will handle model routing
+- Upgrade to Option A when implementing Phase 3 deep research
 
-## Simple LiteLLM Configuration
+## Phase 2: Simple LiteLLM Configuration
 
-### Option 1: Direct API Base (Simplest)
+### Option 1: Direct API Base (Phase 2 - Simplest)
 No config file needed! Just set environment variables:
 
 ```bash
@@ -154,7 +158,7 @@ response = litellm.completion(
 )
 ```
 
-### Option 2: LiteLLM Config File (Advanced)
+### Option 2: LiteLLM Config File (Phase 3 Preparation)
 Create `litellm_config.yaml` for model mapping:
 
 ```yaml
@@ -188,9 +192,9 @@ Then point your app to LiteLLM proxy:
 export OPENAI_API_BASE=http://localhost:8000
 ```
 
-## Testing Your Setup
+## Testing by Phase
 
-### Step 1: Verify LM Studio API
+### Phase 2: Verify Basic Local Model Setup
 ```bash
 # Test model availability
 curl http://localhost:1234/v1/models
@@ -205,7 +209,7 @@ curl -X POST http://localhost:1234/v1/chat/completions \
   }'
 ```
 
-### Step 2: Test LiteLLM Integration
+### Phase 2: Test LiteLLM Integration
 ```python
 # test_local_models.py
 import litellm
@@ -222,7 +226,7 @@ print(f"Response: {response.choices[0].message.content}")
 print(f"Model: {response.model}")
 ```
 
-### Step 3: Verify Your Agents Work
+### Phase 2: Verify Your Agents Work
 Run your existing agent test:
 ```python
 from agents.research_agent import ResearchAgent
@@ -232,7 +236,7 @@ result = agent.research("test project")
 print("✓ Agent working with local models!")
 ```
 
-### Step 4: Test Reasoning Content (Phase 2)
+### Phase 3: Test Reasoning Content & Deep Research
 Test reasoning models with thinking content:
 ```python
 import litellm
@@ -254,7 +258,31 @@ if hasattr(response.choices[0].message, 'thinking_blocks'):
     print("Thinking blocks:", response.choices[0].message.thinking_blocks)
 ```
 
-Your agents don't know they're using local models - the API calls are identical, but now with enhanced reasoning!
+### Phase 3: Test Multi-Agent Deep Research
+
+```python
+# test_deep_research.py
+from agents.deep_research_supervisor import DeepResearchSupervisor
+import asyncio
+
+async def test_deep_research():
+    supervisor = DeepResearchSupervisor()
+    
+    # Test multi-agent deep research
+    result = await supervisor.conduct_deep_research(
+        "Analyze the impact of AI on healthcare innovation"
+    )
+    
+    print("Deep Research Results:")
+    print(f"Report: {result['report'][:200]}...")
+    print(f"Sources: {len(result['sources'])} research agents used")
+    print(f"Methodology: {result['methodology']}")
+    
+if __name__ == "__main__":
+    asyncio.run(test_deep_research())
+```
+
+Your agents don't know they're using local models - the API calls are identical, but now with enhanced reasoning and multi-agent coordination!
 
 ## Performance Optimization
 
@@ -411,35 +439,48 @@ EXPOSE 1234
 CMD ["./lmstudio.AppImage", "server", "start", "--port", "1234"]
 ```
 
-## Quick Start Checklist
+## 3-Phase Quick Start Checklist
 
-1. **✓ Phase 1 Complete**: AI agents using `litellm.completion()` 
-2. **📋 Install LM Studio**: Download and set up on your machine
-3. **📦 Download Models**: 
+### Phase 1: Prerequisites ✅
+- **✓ Complete First**: AI agents using `litellm.completion()` calls
+- **✓ Working Setup**: OpenAI models through LiteLLM
+
+### Phase 2: Local Models 🎯
+1. **📋 Install LM Studio**: Download and set up on your machine
+2. **📦 Download Basic Models**: 
    - General: Qwen2.5-72B-Instruct (42GB)
-   - Reasoning: QwQ-32B-Preview (19GB) for thinking content
-4. **🚀 Start Server**: Load model and start local server on port 1234
-5. **⚙️ Set Environment**: `export OPENAI_API_BASE=http://localhost:1234/v1`
-6. **🧪 Test**: Run your existing agents - they'll use local models automatically
-7. **🧠 Test Reasoning**: Verify reasoning content with o-series models  
-8. **📊 Monitor Usage**: LiteLLM automatically tracks costs and usage
+   - Alternative: Llama-3.3-70B-Instruct (40GB)
+3. **🚀 Start Single Server**: Load model and start local server on port 1234
+4. **⚙️ Set Environment**: `export OPENAI_API_BASE=http://localhost:1234/v1`
+5. **🧪 Test Basic Local**: Run your existing agents - they'll use local models automatically
+6. **📊 Monitor Usage**: LiteLLM automatically tracks costs and usage
 
-### Phase 3: Deep Research Setup
-9. **🏗️ Multi-Model Setup**: Run both general and reasoning models simultaneously
-10. **🔧 Deep Research Architecture**: Implement supervisor + research agent pattern
-11. **🌐 Search Integration**: Configure Tavily, SearXNG, or other search engines
-12. **🔄 Replace o3/o4 Deep Research**: Use local reasoning models instead of OpenAI
-13. **🧪 Test Deep Research**: Verify multi-agent coordination works locally
+### Phase 3: Multi-Agent Deep Research 🚀
+7. **📦 Download Reasoning Models**: 
+   - QwQ-32B-Preview (19GB) for thinking content
+   - DeepSeek-R1-Distill-Qwen-32B (19GB) alternative
+8. **🏗️ Multi-Model Setup**: Run general + reasoning models simultaneously (ports 1234 + 1235)
+9. **🔧 Implement Deep Research**: Build supervisor + research agent pattern
+10. **🌐 Configure Search Engines**: Set up Tavily, SearXNG, academic search
+11. **🔄 Replace o3/o4 Deep Research**: Use local reasoning models instead of OpenAI
+12. **🧠 Test Reasoning Content**: Verify access to thinking/reasoning traces
+13. **🧪 Test Multi-Agent**: Verify deep research coordination works locally
 
-## Expected Results
+## Expected Results by Phase
 
+### Phase 2 Results: Local Models
 - **Same Code**: Your agents use `litellm.completion()` unchanged
 - **Local Models**: Inference happens on your hardware  
 - **Same Interface**: OpenAI-compatible responses
-- **Enhanced Reasoning**: Access to `reasoning_content` and `thinking_blocks`
-- **Better Performance**: Potentially faster and always available
 - **No API Costs**: No charges for local inference
 - **Built-in Cost Tracking**: LiteLLM automatically tracks usage and costs
+
+### Phase 3 Results: Deep Research System
+- **Enhanced Reasoning**: Access to `reasoning_content` and `thinking_blocks`
+- **Multi-Agent Coordination**: Supervisor orchestrates multiple research agents
+- **Comprehensive Search**: Multiple search engines for complete coverage
+- **Cost Elimination**: No more OpenAI o3/o4 deep research costs
+- **Privacy**: Complete local processing for sensitive research
 
 ### Advanced Features Available
 - **Reasoning Models**: QwQ-32B and DeepSeek-R1 with thinking content
@@ -490,13 +531,31 @@ reasoning_response = litellm.completion(
 - **Cost-effective**: No OpenAI o3/o4 API costs
 - **Local**: Complete privacy and control over deep research process
 
-Your AI agents won't know they switched from OpenAI to local models - that's the power of LiteLLM's unified interface!
+## Migration Success
 
-## Support
+Your AI agents won't know they've gone through this complete transformation:
+1. **Phase 1**: OpenAI → LiteLLM (same models, zero changes)
+2. **Phase 2**: LiteLLM → Local Models (same interface, local processing)  
+3. **Phase 3**: Local Models → Multi-Agent Deep Research (enhanced capabilities)
+
+**The power of LiteLLM's unified interface**: Your business logic and prompts never changed, but you now have a complete local deep research system!
+
+## Support & Resources
 
 - **LM Studio Docs**: https://lmstudio.ai/docs
+- **LiteLLM Docs**: https://docs.litellm.ai/
 - **Model Hub**: https://huggingface.co/models
 - **GPU Requirements**: Use HuggingFace model cards for VRAM estimates
-- **Community**: LM Studio Discord for troubleshooting
+- **Community**: LM Studio Discord + LiteLLM GitHub for troubleshooting
 
-Remember: Start simple with one model, then expand. Your AI agents don't need to know they're talking to local models instead of OpenAI!
+## Migration Philosophy
+
+**Start Simple, Scale Smart**: 
+- Phase 2: One model, basic local processing
+- Phase 3: Multi-model, advanced deep research
+- Your code adapts automatically to increased capabilities!
+
+**Cost & Privacy Benefits**:
+- Phase 2: Eliminate standard API costs  
+- Phase 3: Eliminate expensive o3/o4 deep research costs
+- All processing stays local for complete privacy

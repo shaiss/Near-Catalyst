@@ -1,14 +1,19 @@
-# AI Agent Implementation Guide: LiteLLM + Open Deep Research Migration
+# AI Agent Implementation Guide: 3-Phase LiteLLM Migration
 
 ## Mission Overview
 
-**Goal**: Replace direct OpenAI calls with LiteLLM while keeping the same models and business logic unchanged. Then prepare for easy local model switching.
+**Goal**: Migrate from native OpenAI calls to a complete local deep research system through three distinct phases.
+
+**3-Phase Strategy**:
+- **Phase 1**: OpenAI → LiteLLM (same models, zero code changes)
+- **Phase 2**: LiteLLM → Local Models (via LM Studio, same interface)  
+- **Phase 3**: Build Multi-Agent Deep Research (replace o3/o4 with local reasoning)
 
 **Success Criteria**: 
-- Phase 1: Same OpenAI models through LiteLLM (no model changes)
-- Phase 2: Easy switch to local models via configuration
-- Zero changes to business logic and prompts
-- Maintain existing interfaces and behaviors
+- Minimize code and prompt changes across all phases
+- Maintain existing interfaces and behaviors throughout
+- Replace expensive OpenAI deep research with local multi-agent system
+- Achieve cost savings while improving capabilities
 
 ## Phase 1: Direct OpenAI Replacement via LiteLLM
 
@@ -293,11 +298,20 @@ class EnhancedResearchAgent:
 
 ---
 
-### 7. Phase 3: Deep Research Architecture Design
+## Phase 3: Multi-Agent Deep Research System
 
-**Your Task**: Create LiteLLM-compatible deep research system (replaces OpenAI o3/o4 deep research)
+### 7. Architecture Overview
 
-#### A. Core Architecture Pattern (Borrowed from open-deep-research)
+**Goal**: Replace OpenAI o3/o4 deep research with local multi-agent system using LiteLLM + local reasoning models.
+
+**Architecture Principles**:
+- **No LangChain**: Direct LiteLLM calls only  
+- **Borrows proven patterns**: From open-deep-research supervisor architecture
+- **Local reasoning**: QwQ-32B/DeepSeek-R1 with thinking content
+- **Same interface**: Drop-in replacement for existing DeepResearchAgent
+- **Cost effective**: Eliminate OpenAI o3/o4 API costs
+
+#### A. Core Supervisor Pattern (Inspired by open-deep-research)
 
 ```python
 # agents/deep_research_supervisor.py
@@ -329,7 +343,7 @@ class DeepResearchSupervisor:
         }
 ```
 
-#### B. Research Agent Implementation
+#### B. Individual Research Agents
 
 ```python
 # agents/research_agent.py
@@ -380,7 +394,7 @@ class LiteLLMResearchAgent:
         }
 ```
 
-#### C. Integration with Existing System
+#### C. Drop-in Replacement Integration
 
 ```python
 # Update agents/deep_research_agent.py to use LiteLLM supervisor
@@ -407,18 +421,89 @@ class DeepResearchAgent:
         }
 ```
 
-**Why This Approach**:
-- **No LangChain**: Direct LiteLLM calls only
-- **Borrows proven patterns**: From open-deep-research supervisor architecture
-- **Local reasoning**: QwQ-32B/DeepSeek-R1 with thinking content
-- **Cost effective**: No OpenAI o3/o4 API costs
-- **Same interface**: Drop-in replacement for existing DeepResearchAgent
+### 8. Search Engine Integration
+
+**Your Task**: Configure multiple search engines for comprehensive research
+
+```python
+# agents/search_coordinator.py
+import litellm
+from typing import List, Dict
+
+class SearchCoordinator:
+    def __init__(self):
+        self.search_engines = {
+            'tavily': self._tavily_search,
+            'searxng': self._searxng_search,
+            'brave': self._brave_search,
+            'academic': self._academic_search  # arXiv, PubMed
+        }
+    
+    async def multi_engine_search(self, query: str, engines: List[str] = None) -> Dict:
+        """Search across multiple engines for comprehensive results"""
+        engines = engines or ['tavily', 'searxng']
+        
+        search_tasks = [
+            self.search_engines[engine](query) 
+            for engine in engines 
+            if engine in self.search_engines
+        ]
+        
+        results = await asyncio.gather(*search_tasks)
+        return self._merge_search_results(results)
+```
+
+### 9. Web Search with LiteLLM
+
+**Your Task**: Leverage LiteLLM's built-in web search capabilities
+
+```python
+# Enhanced research with built-in web search
+async def enhanced_research(self, query: str) -> Dict:
+    """Use LiteLLM's native web search for research"""
+    
+    # Option 1: Direct web search via LiteLLM
+    response = litellm.completion(
+        model="gpt-4o-search-preview",  # OpenAI search model
+        messages=[{"role": "user", "content": f"Research: {query}"}],
+        web_search_options={
+            "search_context_size": "high",
+            "max_search_results": 10
+        }
+    )
+    
+    # Option 2: Local reasoning model + external search
+    search_results = await self.search_coordinator.multi_engine_search(query)
+    
+    reasoning_response = litellm.completion(
+        model="openai/qwq-32b-preview",  # Local reasoning model
+        messages=[{
+            "role": "user", 
+            "content": f"Analyze search results for {query}: {search_results}"
+        }],
+        reasoning_effort="high",
+        api_base="http://localhost:1235/v1"  # Local reasoning model port
+    )
+    
+    return {
+        "analysis": reasoning_response.choices[0].message.content,
+        "reasoning_trace": reasoning_response.choices[0].message.reasoning_content,
+        "sources": search_results
+    }
+```
+
+**Key Benefits of Phase 3**:
+- **Cost Elimination**: No more OpenAI o3/o4 deep research costs
+- **Enhanced Privacy**: All deep research happens locally
+- **Thinking Content**: Access to model reasoning process
+- **Multi-Engine Search**: Comprehensive source coverage
+- **Same Interface**: Existing agents work unchanged
 
 ---
 
 ## Testing & Validation
 
-### 7. Create Test Scripts
+### 10. Create Test Scripts
 
 **Your Task**: Create `test_litellm_migration.py`
 
@@ -459,7 +544,7 @@ python test_litellm_migration.py
 
 ---
 
-### 8. Requirements Update
+### 11. Requirements Update
 
 **Your Task**: Update `requirements.txt`
 
@@ -475,8 +560,13 @@ flask-cors>=4.0.0
 # New for LiteLLM
 litellm>=1.74.0
 
+# Phase 3: Search engines and coordination
+tavily-python>=0.3.0
+requests>=2.31.0
+aiohttp>=3.8.0
+
 # Optional for enhanced research
-# open_deep_research>=0.0.16  # Uncomment if using
+# open_deep_research>=0.0.16  # For reference patterns only
 ```
 
 ---
