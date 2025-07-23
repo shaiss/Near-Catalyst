@@ -61,19 +61,21 @@ brew install --cask lm-studio
    - VRAM: ~22GB
 ```
 
-**Phase 2: Reasoning Models**
+**Phase 2: Reasoning Models with Thinking Content**
 ```
 3. Qwen/QwQ-32B-Preview-GGUF
    - File: qwq-32b-preview-q4_k_m.gguf
    - Size: ~19GB
-   - Purpose: Reasoning replacement for o-series
+   - Purpose: Local reasoning with thinking/reasoning content
    - VRAM: ~12GB
+   - Supports: reasoning_content and thinking_blocks
 
 4. deepseek-ai/DeepSeek-R1-Distill-Qwen-32B-GGUF
    - File: deepseek-r1-distill-qwen-32b-q4_k_m.gguf
    - Size: ~19GB
-   - Purpose: Alternative reasoning model
+   - Purpose: Alternative reasoning model with thinking
    - VRAM: ~12GB
+   - Supports: reasoning_content and thinking_blocks
 ```
 
 **Phase 3: Specialized Models**
@@ -230,7 +232,29 @@ result = agent.research("test project")
 print("✓ Agent working with local models!")
 ```
 
-Your agents don't know they're using local models - the API calls are identical.
+### Step 4: Test Reasoning Content (Phase 2)
+Test reasoning models with thinking content:
+```python
+import litellm
+import os
+
+os.environ["OPENAI_API_BASE"] = "http://localhost:1234/v1"
+
+# Test reasoning model with thinking content
+response = litellm.completion(
+    model="o4-mini",  # Will route to local QwQ-32B
+    messages=[{"role": "user", "content": "Solve this complex reasoning task step by step"}],
+    reasoning_effort="medium"
+)
+
+# Access reasoning content
+print("Response:", response.choices[0].message.content)
+print("Reasoning:", response.choices[0].message.reasoning_content)
+if hasattr(response.choices[0].message, 'thinking_blocks'):
+    print("Thinking blocks:", response.choices[0].message.thinking_blocks)
+```
+
+Your agents don't know they're using local models - the API calls are identical, but now with enhanced reasoning!
 
 ## Performance Optimization
 
@@ -391,18 +415,30 @@ CMD ["./lmstudio.AppImage", "server", "start", "--port", "1234"]
 
 1. **✓ Phase 1 Complete**: AI agents using `litellm.completion()` 
 2. **📋 Install LM Studio**: Download and set up on your machine
-3. **📦 Download Model**: Start with Qwen2.5-72B-Instruct (42GB)
+3. **📦 Download Models**: 
+   - General: Qwen2.5-72B-Instruct (42GB)
+   - Reasoning: QwQ-32B-Preview (19GB) for thinking content
 4. **🚀 Start Server**: Load model and start local server on port 1234
 5. **⚙️ Set Environment**: `export OPENAI_API_BASE=http://localhost:1234/v1`
 6. **🧪 Test**: Run your existing agents - they'll use local models automatically
+7. **🧠 Test Reasoning**: Verify reasoning content with o-series models
+8. **📊 Monitor Usage**: LiteLLM automatically tracks costs and usage
 
 ## Expected Results
 
 - **Same Code**: Your agents use `litellm.completion()` unchanged
 - **Local Models**: Inference happens on your hardware  
 - **Same Interface**: OpenAI-compatible responses
+- **Enhanced Reasoning**: Access to `reasoning_content` and `thinking_blocks`
 - **Better Performance**: Potentially faster and always available
 - **No API Costs**: No charges for local inference
+- **Built-in Cost Tracking**: LiteLLM automatically tracks usage and costs
+
+### Advanced Features Available
+- **Reasoning Models**: QwQ-32B and DeepSeek-R1 with thinking content
+- **Web Search**: Built-in web search capabilities via LiteLLM
+- **Native Usage Tracking**: Automatic cost and usage monitoring
+- **Easy Scaling**: Add multiple models or fallbacks via config
 
 Your AI agents won't know they switched from OpenAI to local models - that's the power of LiteLLM's unified interface!
 

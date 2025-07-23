@@ -68,9 +68,9 @@ response = litellm.completion(
 
 ---
 
-### 2. Handle o-series Models (responses.create)
+### 2. Update o-series Models (LiteLLM DOES Support Them!)
 
-**Your Task**: Special handling for reasoning models
+**Your Task**: Replace o-series models with LiteLLM calls - they're fully supported!
 
 **Current Pattern**:
 ```python
@@ -82,16 +82,20 @@ response = client.responses.create(
 
 **Target Pattern**:
 ```python
-# o-series models still use OpenAI directly (Phase 1)
-# LiteLLM doesn't support responses.create() yet
-import openai
-response = openai.responses.create(
-    model="o4-mini-deep-research-2025-06-26",
+# o-series models work with litellm.completion()!
+import litellm
+response = litellm.completion(
+    model="o4-mini",  # LiteLLM supports: o4-mini, o3-mini, o3
     messages=[{"role": "user", "content": prompt}]
 )
 ```
 
-**Why**: LiteLLM doesn't yet support OpenAI's responses API for reasoning models. Keep these calls unchanged for now.
+**Available o-series Models in LiteLLM**:
+- `o4-mini` 
+- `o3-mini`
+- `o3`
+
+**Key Point**: No special handling needed - LiteLLM supports o-series models directly via `completion()`!
 
 ---
 
@@ -179,22 +183,27 @@ deep_research_agent = DeepResearchAgent(None, db_manager, usage_tracker)
 
 ## Phase 2: Prepare for Local Models
 
-### 5. Environment Configuration  
+### 5. Environment Configuration & Future Features
 
-**Your Task**: Update `.env` and add configuration variables
+**Your Task**: Update `.env` and add configuration variables for Phase 2
 
 **Add to `.env`**:
 ```bash
 # Existing
 OPENAI_API_KEY=your_openai_key
 
-# New for LiteLLM (Phase 2 - LM Studio)
+# New for LiteLLM (Phase 2 - LM Studio)  
 LM_STUDIO_API_BASE=http://localhost:1234/v1
 LM_STUDIO_API_KEY=local-key
 
-# Feature flags for future
+# Feature flags for Phase 2
 USE_LOCAL_MODELS=false  # Set to true in Phase 2
-USE_OPEN_DEEP_RESEARCH=false  # Optional enhancement
+USE_REASONING_MODELS=true  # Support thinking/reasoning content
+ENABLE_WEB_SEARCH=false  # Optional web search capability
+
+# Optional for enhanced research (Phase 2)
+USE_OPEN_DEEP_RESEARCH=false
+TAVILY_API_KEY=your_tavily_key  # For web search if enabled
 ```
 
 **Add to `config/config.py`**:
@@ -207,58 +216,80 @@ LITELLM_CONFIG = {
         # Phase 2: Map to local models when USE_LOCAL_MODELS=true
         'gpt-4.1': 'openai/qwen2.5-72b-instruct',
         'gpt-4.1-mini': 'openai/llama-3.3-70b-instruct',
-        # o-series models stay on OpenAI for now
+        'o4-mini': 'openai/qwq-32b-preview',  # Reasoning model mapping
+        'o3-mini': 'openai/deepseek-r1-distill-qwen-32b',
     }
 }
 ```
 
-**Purpose**: Ready for Phase 2 local model switching via environment variables.
+**Purpose**: Ready for Phase 2 local model switching and enhanced reasoning capabilities.
 
 ---
 
-### 6. Optional: Open Deep Research Integration
+### 6. Enhanced Capabilities for Phase 2
 
-**Your Task**: (Optional) Create `agents/open_deep_research_agent.py`
+**Your Task**: Prepare for advanced features when using local models
 
-**Purpose**: Alternative to current deep research using the open-deep-research package
+#### A. Reasoning Content Support
+LiteLLM supports `reasoning_content` and `thinking` for local reasoning models:
 
-**Only implement this if**:
-- Current deep research isn't meeting needs
-- You want enhanced web search capabilities  
-- You want structured research workflows
-
-**Basic Structure**:
 ```python
-# agents/open_deep_research_agent.py
-try:
-    from open_deep_research import research_workflow
-    OPEN_DEEP_RESEARCH_AVAILABLE = True
-except ImportError:
-    OPEN_DEEP_RESEARCH_AVAILABLE = False
+# Phase 2: Local reasoning models with thinking content
+response = litellm.completion(
+    model="openai/qwq-32b-preview",  # Local reasoning model via LM Studio
+    messages=[{"role": "user", "content": "Complex reasoning task"}],
+    reasoning_effort="low",  # or "medium", "high"
+    api_base="http://localhost:1234/v1"
+)
 
-class OpenDeepResearchAgent:
+# Access reasoning content
+reasoning = response.choices[0].message.reasoning_content
+thinking_blocks = response.choices[0].message.thinking_blocks
+```
+
+#### B. Web Search Integration
+LiteLLM supports web search for enhanced research:
+
+```python
+# Phase 2: Web search capability
+response = litellm.completion(
+    model="openai/gpt-4o-search-preview",  
+    messages=[{"role": "user", "content": "Research latest AI developments"}],
+    web_search_options={
+        "search_context_size": "medium"  # "low", "medium", "high"
+    }
+)
+```
+
+#### C. Optional: Open Deep Research Integration
+```python
+# agents/enhanced_research_agent.py
+class EnhancedResearchAgent:
     def __init__(self, config=None):
-        if not OPEN_DEEP_RESEARCH_AVAILABLE:
-            raise ImportError("open_deep_research package not installed")
+        self.use_web_search = config.get('enable_web_search', False)
+        self.use_reasoning = config.get('use_reasoning_models', True)
     
-    async def conduct_deep_research(self, project_name: str, general_research: str) -> Dict:
-        """Same interface as DeepResearchAgent for drop-in replacement"""
-        # Implementation using open_deep_research package
-        # Returns same format as existing agent
-        pass
+    async def conduct_research(self, project_name: str) -> Dict:
+        # Use LiteLLM's built-in web search + reasoning
+        if self.use_web_search:
+            response = litellm.completion(
+                model="gpt-4.1",
+                messages=[{"role": "user", "content": f"Research {project_name}"}],
+                web_search_options={"search_context_size": "high"}
+            )
+        else:
+            response = litellm.completion(
+                model="o4-mini" if self.use_reasoning else "gpt-4.1",
+                messages=[{"role": "user", "content": f"Analyze {project_name}"}],
+                reasoning_effort="medium" if self.use_reasoning else None
+            )
 ```
 
-**Integration**:
-```python
-# In config/config.py
-USE_OPEN_DEEP_RESEARCH = os.getenv('USE_OPEN_DEEP_RESEARCH', 'false').lower() == 'true'
-
-# In main orchestrator - conditional usage
-if USE_OPEN_DEEP_RESEARCH:
-    deep_agent = OpenDeepResearchAgent()
-else:
-    deep_agent = DeepResearchAgent()  # Existing
-```
+**Key Benefits in Phase 2**:
+- Enhanced reasoning via local models with thinking content
+- Built-in web search without external dependencies  
+- Better cost control with local inference
+- Same interfaces as Phase 1
 
 ---
 
@@ -350,25 +381,30 @@ litellm>=1.74.0
 
 ### Phase 1 Complete When
 - All agents work with `litellm.completion()` calls
-- Same OpenAI models, same parameters, same responses
+- Same OpenAI models, same parameters, same responses  
 - Existing test suite passes unchanged
 - Zero business logic changes required
-- o-series models work with direct OpenAI (temporary)
+- **o-series models work with LiteLLM** (they're fully supported!)
 
 ### Phase 2 Complete When  
 - LM Studio running with local models
 - Configuration switches between OpenAI/local via env var
 - Same agent interfaces work with local models
+- **Reasoning content** accessible via `response.choices[0].message.reasoning_content`
+- **Web search** integrated for enhanced research capabilities
+- **Native cost tracking** via LiteLLM (replaces custom tracking)
 - Performance meets or exceeds OpenAI
-- Cost tracking works with local inference
 
 ### Validation Checklist
 - [ ] `litellm.completion()` returns same format as OpenAI
 - [ ] All agent files updated (no more `from openai import OpenAI`)
+- [ ] **o-series models** use `litellm.completion()` (not separate handling)
 - [ ] Main orchestrator doesn't create OpenAI client
-- [ ] Test script runs successfully
+- [ ] Test script runs successfully  
 - [ ] Environment variables configured for Phase 2
 - [ ] Requirements.txt includes LiteLLM
+- [ ] **Phase 2**: Reasoning content and web search ready
+- [ ] **Phase 2**: Custom usage tracking replaced with LiteLLM native tracking
 
 ---
 
@@ -387,9 +423,18 @@ litellm>=1.74.0
 - Same rate limiting responses
 
 ### Future-Proofing
-- Phase 2 allows easy switching to local models
+- Phase 2 allows easy switching to local models with reasoning
+- **LiteLLM native cost tracking** replaces custom implementations  
+- **Web search and reasoning content** built-in for enhanced capabilities
 - Environment variable controls model source
 - Same code works with any LiteLLM-supported provider
 - Can add fallbacks, load balancing, etc. later
 
-**Remember**: This is a simple import swap, not a major refactor. The point of LiteLLM is to make model switching transparent to your code.
+**Key Advantages of LiteLLM Approach**:
+1. **o-series models fully supported** - no special handling needed
+2. **Built-in cost tracking** - automatic for 17k+ models 
+3. **Reasoning content access** - `response.choices[0].message.reasoning_content`
+4. **Web search integration** - no external dependencies needed
+5. **Local model support** - same interface for OpenAI or local models
+
+**Remember**: This is a simple import swap that unlocks powerful capabilities. LiteLLM makes model switching and advanced features transparent to your code.
