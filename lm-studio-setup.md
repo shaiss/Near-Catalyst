@@ -2,7 +2,9 @@
 
 ## Overview
 
-This guide will help you set up LM Studio to serve local models with OpenAI-compatible endpoints that work seamlessly with LiteLLM. Your AI agents will use these models through the unified client without knowing they're hitting local endpoints.
+This guide will help you set up LM Studio to serve local models with OpenAI-compatible endpoints that work seamlessly with LiteLLM. This is **Phase 2** of the migration - after you've already replaced OpenAI imports with LiteLLM.
+
+**Prerequisites**: Your AI agents should already be using `litellm.completion()` calls instead of OpenAI client calls.
 
 ## Hardware Requirements
 
@@ -130,64 +132,58 @@ lms server start qwen2.5-32b-instruct-q4_k_m.gguf --port 1236
 - Switch models as needed through LM Studio UI
 - LiteLLM will handle model routing
 
-## LiteLLM Configuration for LM Studio
+## Simple LiteLLM Configuration
 
-### Your LiteLLM Config File
-Create `litellm_config.yaml`:
+### Option 1: Direct API Base (Simplest)
+No config file needed! Just set environment variables:
+
+```bash
+# In your .env file
+OPENAI_API_BASE=http://localhost:1234/v1
+OPENAI_API_KEY=local-key  # LM Studio doesn't validate this
+```
+
+Your existing code works unchanged:
+```python
+import litellm
+response = litellm.completion(
+    model="gpt-4.1",  # Will route to your local model
+    messages=messages
+)
+```
+
+### Option 2: LiteLLM Config File (Advanced)
+Create `litellm_config.yaml` for model mapping:
 
 ```yaml
 model_list:
-  # General Purpose Model
-  - model_name: local-general
+  - model_name: gpt-4.1
     litellm_params:
       model: openai/qwen2.5-72b-instruct
       api_base: http://localhost:1234/v1
-      api_key: "local-key"  # LM Studio doesn't require real key
-    model_info:
-      max_tokens: 32768
-      supports_function_calling: true
-      mode: chat
-
-  # Reasoning Model (when available)
-  - model_name: local-reasoning
-    litellm_params:
-      model: openai/qwq-32b-preview
-      api_base: http://localhost:1235/v1
       api_key: "local-key"
-    model_info:
-      max_tokens: 32768
-      supports_reasoning: true
-      mode: chat
-
-  # Cloud Fallback (OpenAI)
-  - model_name: cloud-general
+      
+  - model_name: gpt-4.1-mini  
     litellm_params:
-      model: openai/gpt-4
-      api_key: ${OPENAI_API_KEY}
-    model_info:
-      max_tokens: 128000
+      model: openai/llama-3.3-70b-instruct
+      api_base: http://localhost:1234/v1
+      api_key: "local-key"
 
-  # Cloud Reasoning Fallback
-  - model_name: cloud-reasoning
-    litellm_params:
-      model: openai/o1-preview
-      api_key: ${OPENAI_API_KEY}
-
-# Router Settings
+# Optional: Fallbacks to OpenAI if local fails
 router_settings:
-  routing_strategy: "least-busy"
-  model_group_alias:
-    general: ["local-general", "cloud-general"]
-    reasoning: ["local-reasoning", "cloud-reasoning"]
-  
   fallbacks:
-    local-general: ["cloud-general"]
-    local-reasoning: ["cloud-reasoning"]
-    
-  health_checks:
-    enabled: true
-    healthy_threshold: 3
-    unhealthy_threshold: 5
+    - "gpt-4.1": ["openai/gpt-4"]
+    - "gpt-4.1-mini": ["openai/gpt-4o-mini"]
+```
+
+Start LiteLLM with config:
+```bash
+litellm --config litellm_config.yaml --port 8000
+```
+
+Then point your app to LiteLLM proxy:
+```bash
+export OPENAI_API_BASE=http://localhost:8000
 ```
 
 ## Testing Your Setup
@@ -213,22 +209,28 @@ curl -X POST http://localhost:1234/v1/chat/completions \
 import litellm
 import os
 
-# Test local model through LiteLLM
+# Option 1: Direct API base
+os.environ["OPENAI_API_BASE"] = "http://localhost:1234/v1"
 response = litellm.completion(
-    model="openai/qwen2.5-72b-instruct",
-    messages=[{"role": "user", "content": "Test local model"}],
-    api_base="http://localhost:1234/v1",
-    api_key="local-key"
+    model="gpt-4.1",  # Your existing model name
+    messages=[{"role": "user", "content": "Test local model"}]
 )
 
 print(f"Response: {response.choices[0].message.content}")
 print(f"Model: {response.model}")
 ```
 
-### Step 3: Verify Model Mapping
-Your AI agents will use these model names in code:
-- `gpt-4.1` → Maps to `local-general` → Routes to local Qwen2.5-72B
-- `o4-mini-deep-research` → Maps to `local-reasoning` → Routes to local QwQ-32B
+### Step 3: Verify Your Agents Work
+Run your existing agent test:
+```python
+from agents.research_agent import ResearchAgent
+
+agent = ResearchAgent()
+result = agent.research("test project")
+print("✓ Agent working with local models!")
+```
+
+Your agents don't know they're using local models - the API calls are identical.
 
 ## Performance Optimization
 
@@ -385,15 +387,24 @@ EXPOSE 1234
 CMD ["./lmstudio.AppImage", "server", "start", "--port", "1234"]
 ```
 
-## Next Steps
+## Quick Start Checklist
 
-1. **Start with Single Model**: Get Qwen2.5-72B working first
-2. **Test Integration**: Verify your AI agents can connect
-3. **Add Reasoning Model**: Set up QwQ-32B for complex tasks
-4. **Optimize Performance**: Tune settings for your hardware
-5. **Production Deploy**: Set up monitoring and auto-restart
+1. **✓ Phase 1 Complete**: AI agents using `litellm.completion()` 
+2. **📋 Install LM Studio**: Download and set up on your machine
+3. **📦 Download Model**: Start with Qwen2.5-72B-Instruct (42GB)
+4. **🚀 Start Server**: Load model and start local server on port 1234
+5. **⚙️ Set Environment**: `export OPENAI_API_BASE=http://localhost:1234/v1`
+6. **🧪 Test**: Run your existing agents - they'll use local models automatically
 
-Your LM Studio setup will provide the local model endpoints that LiteLLM routes to, giving your AI agents access to powerful local models while maintaining the same interface they're used to.
+## Expected Results
+
+- **Same Code**: Your agents use `litellm.completion()` unchanged
+- **Local Models**: Inference happens on your hardware  
+- **Same Interface**: OpenAI-compatible responses
+- **Better Performance**: Potentially faster and always available
+- **No API Costs**: No charges for local inference
+
+Your AI agents won't know they switched from OpenAI to local models - that's the power of LiteLLM's unified interface!
 
 ## Support
 

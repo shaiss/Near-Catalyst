@@ -2,16 +2,17 @@
 
 ## Mission Overview
 
-**Goal**: Migrate from native OpenAI calls to LiteLLM with minimal code changes, while integrating open-deep-research as an alternative research capability.
+**Goal**: Replace direct OpenAI calls with LiteLLM while keeping the same models and business logic unchanged. Then prepare for easy local model switching.
 
 **Success Criteria**: 
-- Swap models/endpoints without touching business logic
+- Phase 1: Same OpenAI models through LiteLLM (no model changes)
+- Phase 2: Easy switch to local models via configuration
+- Zero changes to business logic and prompts
 - Maintain existing interfaces and behaviors
-- Add enhanced research capabilities as optional features
 
-## Phase 1: Drop-in LiteLLM Replacement
+## Phase 1: Direct OpenAI Replacement via LiteLLM
 
-### 1. Client Wrapper Replacement
+### 1. Replace OpenAI Import with LiteLLM
 
 **Current Pattern**:
 ```python
@@ -20,86 +21,96 @@ client = OpenAI()
 response = client.chat.completions.create(model="gpt-4.1", messages=messages)
 ```
 
-**Target Pattern**:
+**Target Pattern (Direct Replacement)**:
 ```python
-from litellm import completion
-response = completion(model="openai/gpt-4.1", messages=messages)
+import litellm
+response = litellm.completion(model="gpt-4.1", messages=messages)
 ```
 
-**Your Task**: Create `llm_client.py`
+**Your Task**: Update import statements across all agent files
 
 **Input Requirements**:
-- Existing OpenAI client usage patterns
-- Environment variables for API keys
-- Current model names used in system
+- Find all `from openai import OpenAI` imports
+- Find all `client.chat.completions.create()` calls
+- Find all `client.responses.create()` calls (o-series models)
 
 **Output Requirements**:
-- Drop-in replacement class that works with existing code
-- Zero changes to agent business logic
-- Automatic fallback capabilities
-- Usage tracking compatibility
+- Replace with `litellm.completion()` calls
+- Same model names, same parameters
+- Same response format (LiteLLM returns OpenAI-compatible responses)
+- Keep existing error handling unchanged
 
-**Key Interface**:
+**Key Changes**:
 ```python
-class UnifiedLLMClient:
-    def chat_completion(self, model: str, messages: List[Dict], **kwargs) -> Dict
-    def reasoning_completion(self, model: str, messages: List[Dict], **kwargs) -> Dict  # For o-series
-    def get_usage_stats(self) -> Dict
+# BEFORE
+from openai import OpenAI
+client = OpenAI()
+response = client.chat.completions.create(
+    model="gpt-4.1",
+    messages=messages,
+    temperature=0.1
+)
+
+# AFTER  
+import litellm
+response = litellm.completion(
+    model="gpt-4.1",  # Same model name
+    messages=messages,
+    temperature=0.1
+)
 ```
 
 **Critical Requirements**:
-- Preserve exact response format structure
-- Handle both sync and async calls
-- Maintain error handling patterns
-- Keep existing timeout behaviors
+- Keep exact same model names initially
+- Keep exact same parameters
+- Response format is identical (LiteLLM ensures this)
+- Keep existing error handling patterns
 
 ---
 
-### 2. Configuration Management
+### 2. Handle o-series Models (responses.create)
 
-**Your Task**: Update `config/config.py`
+**Your Task**: Special handling for reasoning models
 
-**Input**: Current model configuration structure
-
-**Output**: Enhanced config supporting multiple providers
-
-**Required Updates**:
+**Current Pattern**:
 ```python
-# Add to existing config
-LITELLM_CONFIG = {
-    'enabled': True,
-    'default_provider': 'openai',
-    'model_mapping': {
-        'gpt-4.1': 'openai/gpt-4.1',
-        'o4-mini-deep-research-2025-06-26': 'openai/o1-preview',  # Map to available model
-        'gpt-4.1-mini': 'openai/gpt-4o-mini'
-    },
-    'fallback_enabled': True,
-    'local_models': {
-        'reasoning': 'openai/qwen2.5-72b-instruct',  # LM Studio endpoint
-        'general': 'openai/llama-3.3-70b-instruct'   # LM Studio endpoint
-    }
-}
+response = client.responses.create(
+    model="o4-mini-deep-research-2025-06-26",
+    messages=[{"role": "user", "content": prompt}]
+)
 ```
 
-**Why This Matters**: Model switching without code changes throughout the system.
+**Target Pattern**:
+```python
+# o-series models still use OpenAI directly (Phase 1)
+# LiteLLM doesn't support responses.create() yet
+import openai
+response = openai.responses.create(
+    model="o4-mini-deep-research-2025-06-26",
+    messages=[{"role": "user", "content": prompt}]
+)
+```
+
+**Why**: LiteLLM doesn't yet support OpenAI's responses API for reasoning models. Keep these calls unchanged for now.
 
 ---
 
-### 3. Agent Integration Updates
+### 3. Agent File Updates
 
-**Your Task**: Minimal updates to each agent class
+**Your Task**: Update each agent file to use LiteLLM
 
-**Target Agents**:
-- `ResearchAgent`
-- `DeepResearchAgent`
-- `QuestionAgent` (all 6 instances)
-- `SummaryAgent`
+**Target Files**:
+- `agents/research_agent.py`
+- `agents/deep_research_agent.py` 
+- `agents/question_agent.py`
+- `agents/summary_agent.py`
 
 **Required Changes Per Agent**:
 
 **Before**:
 ```python
+from openai import OpenAI
+
 class ResearchAgent:
     def __init__(self, client):
         self.client = client  # OpenAI client
@@ -113,262 +124,272 @@ class ResearchAgent:
 
 **After**:
 ```python
+import litellm
+
 class ResearchAgent:
-    def __init__(self, client):
-        self.client = client  # UnifiedLLMClient
+    def __init__(self, client=None):  # client parameter optional now
+        pass  # No client needed for LiteLLM
     
     def research(self, project_name):
-        response = self.client.chat_completion(
-            model="gpt-4.1",  # Will be mapped automatically
+        response = litellm.completion(
+            model="gpt-4.1",  # Same model name
             messages=messages
         )
 ```
 
-**Key Point**: Only change the method call, not the model names or business logic.
+**Key Point**: Same model names, same parameters, just different import and function call.
 
 ---
 
-### 4. Usage Tracking Integration
-
-**Your Task**: Update `database/usage_tracker.py`
-
-**Input**: Current OpenAI usage tracking logic
-
-**Output**: Enhanced tracker supporting LiteLLM
-
-**Required Interface**:
-```python
-class EnhancedUsageTracker:
-    def track_completion(self, model: str, response: Dict, operation_type: str) -> None
-    def get_cost_breakdown(self) -> Dict
-    def get_provider_stats(self) -> Dict  # New: per-provider usage
-```
-
-**Why**: LiteLLM automatically tracks costs for 17k+ models, leverage this instead of custom calculation.
-
----
-
-## Phase 2: Open Deep Research Integration
-
-### 5. Alternative Research Agent
-
-**Your Task**: Create `agents/open_deep_research_agent.py`
-
-**Input Requirements**:
-- Current `DeepResearchAgent` interface
-- Project research data structure
-- Expected output format
-
-**Output Requirements**:
-- Drop-in alternative to existing deep research
-- Same interface, enhanced capabilities
-- Optional usage (feature flag controlled)
-
-**Required Interface**:
-```python
-class OpenDeepResearchAgent:
-    def __init__(self, config: Dict):
-        # Initialize open_deep_research components
-        
-    async def conduct_deep_research(self, project_name: str, general_research: str) -> Dict:
-        """
-        Same interface as existing DeepResearchAgent.conduct_deep_research()
-        
-        Returns:
-        {
-            "project_name": str,
-            "analysis": str,
-            "metadata": {
-                "model_used": str,
-                "elapsed_time": float,
-                "cost": float,
-                "sources": List[str]  # Enhanced: actual source tracking
-            }
-        }
-        """
-```
-
-**Integration Point**:
-```python
-# In main orchestrator
-if DEEP_RESEARCH_CONFIG.get('use_open_deep_research', False):
-    deep_agent = OpenDeepResearchAgent(config)
-else:
-    deep_agent = DeepResearchAgent(client)  # Existing
-```
-
----
-
-### 6. Enhanced Research Orchestrator
+### 4. Main Orchestrator Update
 
 **Your Task**: Update `analyze_projects_multi_agent_v2.py`
 
-**Input**: Current orchestration logic
-
-**Output**: Support for both research systems
-
-**Required Changes**:
-1. **Model Client Swap**:
+**Current Pattern**:
 ```python
-# Replace this:
+from openai import OpenAI
+from database.usage_tracker import APIUsageTracker
+
+# Initialize OpenAI client
 client = OpenAI()
+usage_tracker = APIUsageTracker(client, db_manager)
 
-# With this:
-from llm_client import UnifiedLLMClient
-client = UnifiedLLMClient()
+# Initialize agents
+research_agent = ResearchAgent(client)
+deep_research_agent = DeepResearchAgent(client, db_manager, usage_tracker)
 ```
 
-2. **Research Agent Selection**:
+**Target Pattern**:
 ```python
-def create_research_agents(config):
-    if config.get('use_open_deep_research', False):
-        return {
-            'research': ResearchAgent(client),
-            'deep_research': OpenDeepResearchAgent(config),
-            'questions': [QuestionAgent(client) for _ in range(6)],
-            'summary': SummaryAgent(client)
-        }
-    else:
-        # Existing agent creation
+import litellm
+from database.usage_tracker import APIUsageTracker
+
+# No OpenAI client needed for basic agents
+# Keep usage tracker for compatibility
+usage_tracker = APIUsageTracker(None, db_manager)  # Pass None for client
+
+# Initialize agents (no client needed)
+research_agent = ResearchAgent()
+deep_research_agent = DeepResearchAgent(None, db_manager, usage_tracker)
 ```
 
-3. **Results Harmonization**:
-```python
-def normalize_research_results(results: Dict, agent_type: str) -> Dict:
-    """Ensure consistent output format regardless of research agent used"""
-    # Handle differences between traditional and open-deep-research outputs
-```
+**Why**: LiteLLM handles API calls directly, so most agents don't need a client object.
 
 ---
 
-## Phase 3: Configuration & Feature Flags
+## Phase 2: Prepare for Local Models
 
-### 7. Feature Flag System
+### 5. Environment Configuration  
 
-**Your Task**: Create `config/feature_flags.py`
+**Your Task**: Update `.env` and add configuration variables
 
-**Purpose**: Control migration rollout and A/B testing
-
-**Required Structure**:
-```python
-FEATURE_FLAGS = {
-    'use_litellm': True,                    # Phase 1
-    'use_local_models': False,              # Phase 2 (LM Studio)
-    'use_open_deep_research': False,        # Phase 2
-    'enable_parallel_research': False,      # Phase 3 (run both systems)
-    'auto_model_selection': False,          # Phase 3 (smart routing)
-}
-
-def is_enabled(flag_name: str) -> bool:
-    return FEATURE_FLAGS.get(flag_name, False)
-
-def get_model_for_task(task_type: str) -> str:
-    """Smart model selection based on task and availability"""
-    if is_enabled('use_local_models'):
-        return LOCAL_MODEL_MAPPING.get(task_type, DEFAULT_MODEL)
-    return CLOUD_MODEL_MAPPING.get(task_type, DEFAULT_MODEL)
-```
-
----
-
-### 8. Environment Configuration
-
-**Your Task**: Update `.env` handling
-
-**Required Variables**:
+**Add to `.env`**:
 ```bash
 # Existing
-OPENAI_API_KEY=your_key
+OPENAI_API_KEY=your_openai_key
 
-# New LiteLLM support
-LITELLM_LOG_LEVEL=INFO
-LITELLM_DROP_PARAMS=True
-
-# LM Studio endpoints (when ready)
-LM_STUDIO_BASE_URL=http://localhost:1234/v1
+# New for LiteLLM (Phase 2 - LM Studio)
+LM_STUDIO_API_BASE=http://localhost:1234/v1
 LM_STUDIO_API_KEY=local-key
 
-# Open Deep Research
-TAVILY_API_KEY=your_tavily_key  # For web search
-LANGSMITH_API_KEY=your_key      # For tracing (optional)
+# Feature flags for future
+USE_LOCAL_MODELS=false  # Set to true in Phase 2
+USE_OPEN_DEEP_RESEARCH=false  # Optional enhancement
+```
 
-# Feature flags
-USE_LITELLM=true
-USE_OPEN_DEEP_RESEARCH=false
-USE_LOCAL_MODELS=false
+**Add to `config/config.py`**:
+```python
+# Add after existing configs
+LITELLM_CONFIG = {
+    'use_local_models': os.getenv('USE_LOCAL_MODELS', 'false').lower() == 'true',
+    'lm_studio_base_url': os.getenv('LM_STUDIO_API_BASE', 'http://localhost:1234/v1'),
+    'model_mapping': {
+        # Phase 2: Map to local models when USE_LOCAL_MODELS=true
+        'gpt-4.1': 'openai/qwen2.5-72b-instruct',
+        'gpt-4.1-mini': 'openai/llama-3.3-70b-instruct',
+        # o-series models stay on OpenAI for now
+    }
+}
+```
+
+**Purpose**: Ready for Phase 2 local model switching via environment variables.
+
+---
+
+### 6. Optional: Open Deep Research Integration
+
+**Your Task**: (Optional) Create `agents/open_deep_research_agent.py`
+
+**Purpose**: Alternative to current deep research using the open-deep-research package
+
+**Only implement this if**:
+- Current deep research isn't meeting needs
+- You want enhanced web search capabilities  
+- You want structured research workflows
+
+**Basic Structure**:
+```python
+# agents/open_deep_research_agent.py
+try:
+    from open_deep_research import research_workflow
+    OPEN_DEEP_RESEARCH_AVAILABLE = True
+except ImportError:
+    OPEN_DEEP_RESEARCH_AVAILABLE = False
+
+class OpenDeepResearchAgent:
+    def __init__(self, config=None):
+        if not OPEN_DEEP_RESEARCH_AVAILABLE:
+            raise ImportError("open_deep_research package not installed")
+    
+    async def conduct_deep_research(self, project_name: str, general_research: str) -> Dict:
+        """Same interface as DeepResearchAgent for drop-in replacement"""
+        # Implementation using open_deep_research package
+        # Returns same format as existing agent
+        pass
+```
+
+**Integration**:
+```python
+# In config/config.py
+USE_OPEN_DEEP_RESEARCH = os.getenv('USE_OPEN_DEEP_RESEARCH', 'false').lower() == 'true'
+
+# In main orchestrator - conditional usage
+if USE_OPEN_DEEP_RESEARCH:
+    deep_agent = OpenDeepResearchAgent()
+else:
+    deep_agent = DeepResearchAgent()  # Existing
 ```
 
 ---
 
-## Implementation Priority & Dependencies
+## Testing & Validation
 
-### Week 1: Core Migration
-1. **`llm_client.py`** - Unified client wrapper
-2. **`config/config.py`** - Enhanced configuration
-3. **Agent updates** - Method call changes only
-4. **Testing** - Verify existing functionality works
+### 7. Create Test Scripts
 
-### Week 2: Enhanced Features
-1. **`usage_tracker.py`** - LiteLLM integration
-2. **`open_deep_research_agent.py`** - Alternative research
-3. **Feature flags** - Controlled rollout system
-4. **Integration testing** - Both systems working
+**Your Task**: Create `test_litellm_migration.py`
 
-### Week 3: Production Ready
-1. **Error handling** - Robust fallback systems
-2. **Performance optimization** - Async improvements
-3. **Monitoring** - Enhanced observability
-4. **Documentation** - Usage guides
+**Purpose**: Validate that LiteLLM changes work correctly
+
+**Basic Test Structure**:
+```python
+# test_litellm_migration.py
+import litellm
+from agents.research_agent import ResearchAgent
+
+def test_basic_completion():
+    """Test that LiteLLM completion works"""
+    response = litellm.completion(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": "Test message"}]
+    )
+    assert response.choices[0].message.content
+    print("✓ Basic completion test passed")
+
+def test_agent_integration():
+    """Test that agents work with LiteLLM"""
+    agent = ResearchAgent()
+    result = agent.research("test project")
+    assert result is not None
+    print("✓ Agent integration test passed")
+
+if __name__ == "__main__":
+    test_basic_completion()
+    test_agent_integration()
+    print("All tests passed!")
+```
+
+**Run tests**:
+```bash
+python test_litellm_migration.py
+```
 
 ---
 
-## Testing Requirements
+### 8. Requirements Update
 
-### Unit Tests Required
-- `test_unified_llm_client.py` - Client wrapper functionality
-- `test_model_mapping.py` - Configuration mapping logic
-- `test_usage_tracking.py` - Cost and usage calculations
+**Your Task**: Update `requirements.txt`
 
-### Integration Tests Required
-- `test_agent_compatibility.py` - Existing agents work unchanged
-- `test_research_parity.py` - Output format consistency
-- `test_fallback_systems.py` - Error handling and recovery
+**Add to requirements.txt**:
+```bash
+# Existing
+openai>=1.57.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+flask>=3.0.0
+flask-cors>=4.0.0
 
-### Performance Tests Required
-- `test_response_times.py` - Latency comparison
-- `test_concurrent_requests.py` - Multi-agent performance
-- `test_cost_optimization.py` - Usage and cost tracking
+# New for LiteLLM
+litellm>=1.74.0
+
+# Optional for enhanced research
+# open_deep_research>=0.0.16  # Uncomment if using
+```
 
 ---
 
-## Success Metrics
+## Implementation Timeline
 
-**Phase 1 Complete When**:
-- All agents work with LiteLLM client
-- Zero business logic changes required
+### Phase 1: LiteLLM Integration (Week 1)
+1. **Day 1**: Update requirements.txt and install LiteLLM
+2. **Day 2**: Replace OpenAI imports in all agent files
+3. **Day 3**: Update main orchestrator file
+4. **Day 4**: Test all agents with LiteLLM
+5. **Day 5**: Handle any o-series model special cases
+
+### Phase 2: Local Model Preparation (Week 2+)
+1. **Week 2**: Set up LM Studio and download models
+2. **Week 3**: Add configuration for local model switching
+3. **Week 4**: Test local models with same interface
+4. **Week 5**: Performance optimization and monitoring
+
+**Note**: Phase 1 keeps using OpenAI models through LiteLLM. Phase 2 switches to local models.
+
+---
+
+## Critical Success Factors
+
+### Phase 1 Complete When
+- All agents work with `litellm.completion()` calls
+- Same OpenAI models, same parameters, same responses
 - Existing test suite passes unchanged
-- Can switch between OpenAI and other providers via config
+- Zero business logic changes required
+- o-series models work with direct OpenAI (temporary)
 
-**Phase 2 Complete When**:
-- Open deep research available as alternative
-- Feature flags control all new capabilities
-- A/B testing possible between research systems
-- Enhanced source tracking and citations working
+### Phase 2 Complete When  
+- LM Studio running with local models
+- Configuration switches between OpenAI/local via env var
+- Same agent interfaces work with local models
+- Performance meets or exceeds OpenAI
+- Cost tracking works with local inference
 
-**Phase 3 Complete When**:
-- Local models integrated via LM Studio
-- Smart model routing based on task type
-- Cost reduced by 70%+ through local inference
-- Performance improved 2x+ through local models
+### Validation Checklist
+- [ ] `litellm.completion()` returns same format as OpenAI
+- [ ] All agent files updated (no more `from openai import OpenAI`)
+- [ ] Main orchestrator doesn't create OpenAI client
+- [ ] Test script runs successfully
+- [ ] Environment variables configured for Phase 2
+- [ ] Requirements.txt includes LiteLLM
 
 ---
 
-## Critical Implementation Notes
+## Key Implementation Notes
 
-1. **Preserve Interfaces**: Existing code should work without changes
-2. **Gradual Migration**: Feature flags enable safe rollout
-3. **Fallback Systems**: Always have OpenAI as backup during transition
-4. **Monitoring**: Track performance and quality metrics throughout
-5. **Testing**: Comprehensive testing at each phase
+### Direct Replacement Strategy
+1. **No wrappers**: Use LiteLLM directly, not through custom clients
+2. **Same models**: Keep using OpenAI models initially (gpt-4.1, etc.)
+3. **Same parameters**: All existing parameters work unchanged
+4. **Same responses**: LiteLLM returns OpenAI-compatible responses
 
-**Remember**: You're building bridges, not burning them. The existing system should continue working while new capabilities are added incrementally.
+### Error Handling
+- Keep existing try/catch blocks unchanged
+- LiteLLM raises same exceptions as OpenAI
+- Same timeout behaviors
+- Same rate limiting responses
+
+### Future-Proofing
+- Phase 2 allows easy switching to local models
+- Environment variable controls model source
+- Same code works with any LiteLLM-supported provider
+- Can add fallbacks, load balancing, etc. later
+
+**Remember**: This is a simple import swap, not a major refactor. The point of LiteLLM is to make model switching transparent to your code.
