@@ -197,19 +197,20 @@ deep_research_agent = DeepResearchAgent(None, db_manager, usage_tracker)
 # Existing
 OPENAI_API_KEY=your_openai_key
 
-# Phase 2: Simplified LM Studio Configuration (all via LM Studio local API)
-LM_STUDIO_API_BASE=http://localhost:1234/v1      # All models via LM Studio
-LM_STUDIO_API_KEY=local-key
+# Phase 2: LM Studio Python SDK Configuration (programmatic model management)
+LM_STUDIO_API_BASE=http://localhost:1234/v1      # LM Studio local API server
+LM_STUDIO_API_KEY=local-key                      # Optional for local
 
 # Feature flags for Phase 2
 USE_LOCAL_MODELS=false  # Set to true to activate Phase 2
+USE_LMSTUDIO_SDK=true   # Use Python SDK instead of Desktop GUI
 ENABLE_WEB_SEARCH=false  # Optional web search capability
 
 # Phase 3 preparation
 USE_DEEP_RESEARCH_REPLACEMENT=false  # Phase 3: Replace o4-mini-deep-research
 TAVILY_API_KEY=your_tavily_key  # For web search in Phase 3
 
-# Simplified model deployment (Phase 2) - LM Studio manages model switching
+# Simplified model deployment (Phase 2) - LM Studio SDK manages model loading/switching
 # gpt-4.1 → qwen2.5-72b-instruct
 # o3 → deepseek-r1-distill-qwen-32b
 ```
@@ -219,12 +220,12 @@ TAVILY_API_KEY=your_tavily_key  # For web search in Phase 3
 # Add after existing configs
 LITELLM_CONFIG = {
     'use_local_models': os.getenv('USE_LOCAL_MODELS', 'false').lower() == 'true',
+    'use_lmstudio_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
     'lm_studio_base_url': os.getenv('LM_STUDIO_API_BASE', 'http://localhost:1234/v1'),
-    'reasoning_model_base_url': os.getenv('REASONING_MODEL_BASE', 'http://localhost:1235/v1'),
     
     # Phase 2: Simplified OpenAI → Local OSS Model Mapping
     'model_mapping': {
-        # Core models (via LM Studio local API)
+        # Core models (via LM Studio Python SDK + local API)
         'gpt-4.1': 'qwen2.5-72b-instruct',                 # Research, Summary, Question agents
         'o3': 'deepseek-r1-distill-qwen-32b',              # Question agent reasoning (production)
         
@@ -245,104 +246,339 @@ LITELLM_CONFIG = {
         'o4-mini-deep-research': {'openai': 0.0002, 'local': 0.0}  # $200/1M → Free (Phase 3)
     }
 }
+
+# LM Studio SDK Configuration
+LMSTUDIO_CONFIG = {
+    'use_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
+    'auto_load_models': True,  # Automatically load models when needed
+    'model_load_timeout': 300,  # 5 minutes for model loading
+    'default_generation_config': {
+        'temperature': 0.1,
+        'max_tokens': 2048,
+        'top_p': 0.9
+    }
+}
 ```
 
-**Purpose**: Ready for Phase 2 local model switching with your current model usage mapped to OSS equivalents.
+**Purpose**: Ready for Phase 2 local model switching with programmatic model management via LM Studio Python SDK.
 
 ---
 
-### 6. Current Model Inventory & Phase 2 Mapping
+### 6. Enhanced Phase 2 Architecture: LiteLLM + LM Studio Python SDK
 
-**Your Current OpenAI Models** → **Simplified Phase 2 Mapping**:
+**Complementary Architecture Overview**:
 
-| Agent/Component | Current Model | Usage Location | Phase 2 Local Equivalent |
-|---|---|---|---|
-| **ResearchAgent** | `gpt-4.1` | `agents/research_agent.py:173` | `qwen2.5-72b-instruct` |
-| **SummaryAgent** | `gpt-4.1` | `agents/summary_agent.py:84` | `qwen2.5-72b-instruct` |
-| **QuestionAgent (All modes)** | `o3` | `config/config.py:106` | `deepseek-r1-distill-qwen-32b` |
-| **All Fallbacks** | Various | Multiple locations | Consolidated to above 2 models |
-| **DeepResearchAgent** | `o4-mini-deep-research-2025-06-26` | `config/config.py:91` | **Phase 3**: Multi-agent system |
+```python
+# Enhanced Phase 2 Integration: LiteLLM + LM Studio Python SDK
+import litellm
+import lmstudio as lms
+from typing import Optional, Dict, Any
 
-**Phase 2 Cost Savings**:
-- **gpt-4.1**: $10/1M tokens → **FREE** (100% savings)
-- **o3**: $60/1M tokens → **FREE** (100% savings)  
-- **o4-mini-deep-research**: $200/1M tokens → **Phase 3** replacement target
+class EnhancedLocalModelManager:
+    """
+    Combines LiteLLM's unified API with LM Studio Python SDK's model management
+    
+    Architecture:
+    - LiteLLM: Handles API abstraction and routing
+    - LM Studio SDK: Handles model loading, unloading, and direct management
+    - Backend: lms CLI service provides model execution infrastructure
+    """
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.lms_client = None
+        self.loaded_models = {}
+        
+        if config.get('use_lmstudio_sdk', False):
+            # Initialize LM Studio SDK client
+            self.lms_client = lms.Client()
+    
+    async def ensure_model_loaded(self, model_name: str) -> bool:
+        """
+        Use LM Studio SDK to programmatically load models as needed
+        """
+        if not self.lms_client:
+            return True  # Fallback to manual model management
+            
+        # Map OpenAI model to local model
+        local_model = self.config['model_mapping'].get(model_name, model_name)
+        
+        # Check if model is already loaded
+        loaded_models = await self.lms_client.models.list_loaded()
+        if any(m.identifier == local_model for m in loaded_models):
+            return True
+            
+        # Load model programmatically
+        try:
+            model = await self.lms_client.models.load(local_model)
+            self.loaded_models[model_name] = model
+            print(f"✓ Loaded local model: {local_model} for {model_name}")
+            return True
+        except Exception as e:
+            print(f"✗ Failed to load {local_model}: {e}")
+            return False
+    
+    async def completion_with_auto_load(self, model: str, messages: list, **kwargs) -> Any:
+        """
+        LiteLLM completion with automatic model loading via LM Studio SDK
+        """
+        # Step 1: Ensure model is loaded (LM Studio SDK)
+        if self.config.get('use_local_models', False):
+            await self.ensure_model_loaded(model)
+            
+            # Step 2: Route through LiteLLM to local endpoint
+            return litellm.completion(
+                model=f"lm_studio/{model}",  # LiteLLM's LM Studio provider prefix
+                messages=messages,
+                api_base=self.config['lm_studio_base_url'],
+                **kwargs
+            )
+        else:
+            # Step 2: Use OpenAI via LiteLLM (Phase 1)
+            return litellm.completion(
+                model=model,
+                messages=messages,
+                **kwargs
+            )
 
-**Required LM Studio Models for Phase 2** (Only 2 models needed):
+# Usage in your agents
+class EnhancedResearchAgent:
+    def __init__(self):
+        self.model_manager = EnhancedLocalModelManager(LITELLM_CONFIG)
+    
+    async def research(self, project_name: str) -> Dict:
+        response = await self.model_manager.completion_with_auto_load(
+            model="gpt-4.1",  # Will auto-load qwen2.5-72b-instruct locally
+            messages=[{"role": "user", "content": f"Research {project_name}"}]
+        )
+        return {"analysis": response.choices[0].message.content}
+```
+
+**Key Benefits of This Architecture**:
+1. **Programmatic Control**: No GUI needed, all model management via Python
+2. **Auto-Loading**: Models loaded automatically when needed
+3. **Unified Interface**: Same LiteLLM calls work for OpenAI or local models
+4. **Resource Management**: Models can be unloaded when not needed
+5. **Easy Switching**: Environment variable controls OpenAI vs local
+
+---
+
+### 7. Current Model Inventory & Enhanced Phase 2 Mapping
+
+**Your Current OpenAI Models** → **Enhanced Phase 2 Mapping**:
+
+| Agent/Component | Current Model | Usage Location | Phase 2 Local Equivalent | LM Studio SDK Action |
+|---|---|---|---|---|
+| **ResearchAgent** | `gpt-4.1` | `agents/research_agent.py:173` | `qwen2.5-72b-instruct` | Auto-load on first use |
+| **SummaryAgent** | `gpt-4.1` | `agents/summary_agent.py:84` | `qwen2.5-72b-instruct` | Share loaded instance |
+| **QuestionAgent (All modes)** | `o3` | `config/config.py:106` | `deepseek-r1-distill-qwen-32b` | Auto-load on reasoning tasks |
+| **All Fallbacks** | Various | Multiple locations | Consolidated to above 2 models | Dynamic loading |
+| **DeepResearchAgent** | `o4-mini-deep-research-2025-06-26` | `config/config.py:91` | **Phase 3**: Multi-agent system | Advanced orchestration |
+
+**Enhanced Model Management Strategy**:
+```python
+# agents/model_orchestrator.py
+import lmstudio as lms
+import asyncio
+
+class ModelOrchestrator:
+    """
+    Manages multiple models efficiently with LM Studio Python SDK
+    """
+    
+    def __init__(self):
+        self.client = lms.Client()
+        self.model_usage_map = {
+            'general': 'qwen2.5-72b-instruct',
+            'reasoning': 'deepseek-r1-distill-qwen-32b'
+        }
+        self.active_models = {}
+    
+    async def load_for_workload(self, workload_type: str) -> str:
+        """Load appropriate model for workload type"""
+        model_id = self.model_usage_map[workload_type]
+        
+        if model_id not in self.active_models:
+            print(f"Loading {model_id} for {workload_type} workload...")
+            model = await self.client.models.load(model_id)
+            self.active_models[model_id] = model
+            
+        return model_id
+    
+    async def optimize_memory(self):
+        """Unload unused models to free GPU memory"""
+        # Smart unloading based on usage patterns
+        # Keep most recently used models loaded
+        pass
+```
+
+**Required LM Studio Models for Enhanced Phase 2** (Only 2 models needed):
 ```bash
-# LM Studio manages both models via single API endpoint (port 1234)
+# Models managed programmatically via LM Studio Python SDK
 1. qwen2.5-72b-instruct-q4_k_m.gguf           # 42GB, replaces gpt-4.1
 2. deepseek-r1-distill-qwen-32b-q4_k_m.gguf   # 19GB, replaces o3 reasoning
 
-# Total: ~61GB download, ~36GB VRAM (can run on single RTX 4090 by switching)
+# Total: ~61GB download, smart loading/unloading for memory management
+# LM Studio Python SDK handles: loading, unloading, model switching, resource optimization
 ```
 
 ---
 
-### 7. Enhanced Capabilities for Phase 2
+### 8. Enhanced Capabilities for Phase 2 with LM Studio SDK
 
-**Your Task**: Prepare for advanced features when using local models
+**Your Task**: Prepare for advanced features with programmatic model control
 
-#### A. Reasoning Content Support
-LiteLLM supports `reasoning_content` and `thinking` for local reasoning models:
-
+#### A. Advanced Model Management
 ```python
-# Phase 2: Local reasoning models with thinking content
-response = litellm.completion(
-    model="openai/qwq-32b-preview",  # Local reasoning model via LM Studio
-    messages=[{"role": "user", "content": "Complex reasoning task"}],
-    reasoning_effort="low",  # or "medium", "high"
-    api_base="http://localhost:1234/v1"
-)
+# Enhanced model management with LM Studio Python SDK
+import lmstudio as lms
+from typing import Dict, List
 
-# Access reasoning content
-reasoning = response.choices[0].message.reasoning_content
-thinking_blocks = response.choices[0].message.thinking_blocks
-```
-
-#### B. Web Search Integration
-LiteLLM supports web search for enhanced research:
-
-```python
-# Phase 2: Web search capability
-response = litellm.completion(
-    model="openai/gpt-4o-search-preview",  
-    messages=[{"role": "user", "content": "Research latest AI developments"}],
-    web_search_options={
-        "search_context_size": "medium"  # "low", "medium", "high"
-    }
-)
-```
-
-#### C. Optional: Open Deep Research Integration
-```python
-# agents/enhanced_research_agent.py
-class EnhancedResearchAgent:
-    def __init__(self, config=None):
-        self.use_web_search = config.get('enable_web_search', False)
-        self.use_reasoning = config.get('use_reasoning_models', True)
+class AdvancedModelManager:
+    def __init__(self):
+        self.client = lms.Client()
     
-    async def conduct_research(self, project_name: str) -> Dict:
-        # Use LiteLLM's built-in web search + reasoning
-        if self.use_web_search:
-            response = litellm.completion(
-                model="gpt-4.1",
-                messages=[{"role": "user", "content": f"Research {project_name}"}],
-                web_search_options={"search_context_size": "high"}
+    async def load_model_with_config(self, model_path: str, config: Dict) -> Any:
+        """Load model with specific configuration"""
+        return await self.client.models.load(
+            model_path,
+            config={
+                'gpu_layers': config.get('gpu_layers', -1),
+                'context_length': config.get('context_length', 32768),
+                'batch_size': config.get('batch_size', 512)
+            }
+        )
+    
+    async def smart_model_switching(self, task_type: str) -> str:
+        """Switch models based on task requirements"""
+        current_models = await self.client.models.list_loaded()
+        
+        if task_type == 'reasoning':
+            # Unload general model, load reasoning model
+            for model in current_models:
+                if 'qwen2.5' in model.identifier:
+                    await model.unload()
+            return await self.load_model_with_config(
+                'deepseek-r1-distill-qwen-32b',
+                {'context_length': 65536}  # Larger context for reasoning
             )
         else:
-            response = litellm.completion(
-                model="o4-mini" if self.use_reasoning else "gpt-4.1",
-                messages=[{"role": "user", "content": f"Analyze {project_name}"}],
-                reasoning_effort="medium" if self.use_reasoning else None
+            # Standard general purpose model
+            return await self.load_model_with_config(
+                'qwen2.5-72b-instruct',
+                {'context_length': 32768}
             )
 ```
 
-**Key Benefits in Phase 2**:
-- Enhanced reasoning via local models with thinking content
-- Built-in web search without external dependencies  
-- Better cost control with local inference
-- Same interfaces as Phase 1
+#### B. Agentic Flows with LM Studio SDK
+The LM Studio SDK provides an `.act()` API for autonomous agent behavior:
+
+```python
+# agents/enhanced_agent.py  
+import lmstudio as lms
+
+class EnhancedAgent:
+    def __init__(self):
+        self.model = lms.llm("qwen2.5-72b-instruct")  # Auto-loads if needed
+    
+    async def autonomous_research(self, topic: str, tools: List):
+        """Use LM Studio's .act() API for multi-step autonomous research"""
+        
+        def search_web(query: str) -> str:
+            """Tool for web searching"""
+            # Your web search implementation
+            return f"Search results for: {query}"
+        
+        def analyze_data(data: str) -> str:
+            """Tool for data analysis"""
+            # Your analysis implementation
+            return f"Analysis of: {data}"
+        
+        # Autonomous multi-step execution
+        result = await self.model.act(
+            prompt=f"Research {topic} comprehensively using available tools",
+            tools=[search_web, analyze_data],
+            max_rounds=5,  # Allow up to 5 tool-use rounds
+            on_message=lambda msg: print(f"Agent: {msg}")
+        )
+        
+        return result
+```
+
+#### C. Enhanced Integration with LiteLLM
+```python
+# integration/litellm_lmstudio_bridge.py
+import litellm
+import lmstudio as lms
+from typing import Union
+
+class LiteLLMLMStudioBridge:
+    """
+    Bridge that combines LiteLLM's API abstraction with LM Studio SDK's model management
+    """
+    
+    def __init__(self):
+        self.lms_client = lms.Client()
+        self.model_cache = {}
+    
+    async def smart_completion(self, model: str, messages: list, **kwargs) -> Union[str, dict]:
+        """
+        Smart completion that:
+        1. Uses LM Studio SDK for model management
+        2. Routes through LiteLLM for API consistency
+        3. Handles fallbacks automatically
+        """
+        
+        # Step 1: Ensure model is available via LM Studio SDK
+        local_model = await self._ensure_local_model(model)
+        
+        if local_model:
+            # Step 2: Use LiteLLM with LM Studio provider
+            return litellm.completion(
+                model=f"lm_studio/{local_model}",
+                messages=messages,
+                api_base="http://localhost:1234/v1",
+                **kwargs
+            )
+        else:
+            # Step 3: Fallback to OpenAI via LiteLLM
+            return litellm.completion(
+                model=model,
+                messages=messages,
+                **kwargs
+            )
+    
+    async def _ensure_local_model(self, openai_model: str) -> str:
+        """Use LM Studio SDK to ensure model is loaded"""
+        mapping = {
+            'gpt-4.1': 'qwen2.5-72b-instruct',
+            'o3': 'deepseek-r1-distill-qwen-32b'
+        }
+        
+        local_model = mapping.get(openai_model)
+        if not local_model:
+            return None
+            
+        # Check if already loaded
+        loaded = await self.lms_client.models.list_loaded()
+        if any(m.identifier == local_model for m in loaded):
+            return local_model
+            
+        # Load the model
+        try:
+            await self.lms_client.models.load(local_model)
+            return local_model
+        except Exception as e:
+            print(f"Failed to load {local_model}: {e}")
+            return None
+```
+
+**Key Benefits of Enhanced Phase 2**:
+- **No GUI Dependency**: All model management via Python code
+- **Automatic Model Loading**: Models loaded on-demand
+- **Resource Optimization**: Smart loading/unloading based on usage
+- **Agentic Capabilities**: Use `.act()` API for autonomous behavior
+- **Unified Interface**: LiteLLM + LM Studio SDK work together seamlessly
 
 ---
 
@@ -605,8 +841,11 @@ python-dotenv>=1.0.0
 flask>=3.0.0
 flask-cors>=4.0.0
 
-# New for LiteLLM
+# Phase 1: LiteLLM for unified API
 litellm>=1.74.0
+
+# Phase 2: LM Studio Python SDK for programmatic model management
+lmstudio>=1.4.1
 
 # Phase 3: Search engines and coordination
 tavily-python>=0.3.0
@@ -616,6 +855,28 @@ aiohttp>=3.8.0
 # Optional for enhanced research
 # open_deep_research>=0.0.16  # For reference patterns only
 ```
+
+**Installation Notes**:
+```bash
+# Install all requirements
+pip install -r requirements.txt
+
+# LM Studio CLI backend (required for SDK to work)
+# Download LM Studio from https://lmstudio.ai/download
+# CLI ships with LM Studio 0.2.22+, or install separately:
+npx lmstudio install-cli
+
+# Verify complete installation
+lms --help                    # CLI backend
+python -c "import lmstudio"   # Python SDK
+python -c "import litellm"    # LiteLLM
+```
+
+**Component Relationship**:
+- **LiteLLM**: API abstraction layer (Phase 1)
+- **LM Studio Python SDK**: Model management and agentic capabilities (Phase 2+)
+- **LM Studio CLI**: Backend service that SDK communicates with (required)
+- **Architecture**: `Your Code → LiteLLM → LM Studio SDK → lms CLI → Local Models`
 
 ---
 

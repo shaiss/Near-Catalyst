@@ -1,15 +1,43 @@
-# LM Studio Setup Guide: 3-Phase Local Model Migration
+# LM Studio Setup Guide: 3-Phase Local Model Migration with Python SDK
 
 ## Overview
 
-This guide covers **Phase 2** and **Phase 3** of your migration to local models with deep research capabilities.
+This guide covers **Phase 2** and **Phase 3** of your migration to local models with deep research capabilities using the **LM Studio Python SDK** for programmatic model management.
 
 **Migration Flow**:
 - **Phase 1**: ✅ OpenAI → LiteLLM (completed first)
-- **Phase 2**: 🎯 LiteLLM → Local Models (this guide)
+- **Phase 2**: 🎯 LiteLLM → Local Models via LM Studio Python SDK (this guide)
 - **Phase 3**: 🚀 Multi-Agent Deep Research (advanced setup)
 
 **Prerequisites**: Your AI agents should already be using `litellm.completion()` calls from Phase 1.
+
+**Architecture Overview**:
+```
+Your Agents → LiteLLM (API abstraction) → LM Studio Python SDK (model management) → lms CLI (backend service) → Local Models
+```
+
+## Component Architecture
+
+### The Three LM Studio Components
+
+**1. `lms` CLI (Backend Service)** - ⚠️ **REQUIRED**
+- Provides model execution infrastructure
+- Handles GPU management and model loading
+- Runs as background service
+- Download and installation: Ships with LM Studio 0.2.22+
+
+**2. LM Studio Python SDK** - ✅ **Primary Interface**
+- Programmatic model management via `pip install lmstudio`
+- Model loading, unloading, and configuration via Python code
+- Agentic flows with `.act()` API for autonomous behavior
+- Replaces Desktop GUI for programmatic control
+
+**3. LM Studio Desktop** - ❌ **NOT NEEDED for your use case**
+- GUI application for manual model management
+- Useful for initial setup and testing
+- NOT required when using Python SDK + CLI backend
+
+**Confirmed**: You can skip LM Studio Desktop and use Python SDK + CLI backend for a more cohesive solution.
 
 ## Hardware Requirements
 
@@ -25,48 +53,88 @@ This guide covers **Phase 2** and **Phase 3** of your migration to local models 
 - **Storage**: 4TB NVMe SSD
 - **Models Supported**: Up to 405B parameters
 
-## LM Studio Installation
+## Installation & Setup
 
-### Step 1: Download and Install
+### Step 1: Install LM Studio CLI Backend
 ```bash
-# Download LM Studio
+# Download LM Studio (includes lms CLI)
 wget https://lmstudio.ai/download/linux
 chmod +x lmstudio-*.AppImage
 
 # Or on macOS
 brew install --cask lm-studio
 
-# Launch LM Studio
-./lmstudio-*.AppImage
+# Add lms CLI to PATH (if not automatically added)
+npx lmstudio install-cli
+
+# Verify CLI installation
+lms --help
 ```
 
-### Step 2: GPU Configuration
-1. Open LM Studio
-2. Go to Settings → GPU Acceleration
-3. Enable CUDA (for NVIDIA) or Metal (for Apple Silicon)
-4. Set GPU memory allocation to 90-95%
-5. Verify GPU detection shows your hardware
+### Step 2: Install LM Studio Python SDK
+```bash
+# Install via pip (Python 3.10+ required)
+pip install lmstudio
+
+# Verify installation
+python -c "import lmstudio as lms; print('LM Studio SDK installed successfully')"
+```
+
+### Step 3: Start Backend Service
+```bash
+# Check if LM Studio backend is running
+lms status
+
+# Start the local API server (if not running)
+lms server start
+
+# Verify server is running on default port
+curl http://localhost:1234/v1/models
+```
 
 ## Model Downloads by Phase
 
-### Phase 2: Simplified 2-Model Setup
+### Phase 2: Enhanced 2-Model Setup with Python SDK
 
-**For your specific codebase** (simplified approach):
+**For your specific codebase** (programmatic approach):
 
+```python
+# Download and manage models via Python SDK
+import lmstudio as lms
+
+async def setup_phase2_models():
+    client = lms.Client()
+    
+    # Model 1: General purpose (replaces gpt-4.1)
+    print("Setting up general model...")
+    await client.models.download("qwen2.5-72b-instruct-q4_k_m.gguf")
+    
+    # Model 2: Reasoning (replaces o3)  
+    print("Setting up reasoning model...")
+    await client.models.download("deepseek-r1-distill-qwen-32b-q4_k_m.gguf")
+    
+    print("✓ Phase 2 models ready")
+
+# Or via CLI
+# lms get qwen2.5-72b-instruct
+# lms get deepseek-r1-distill-qwen-32b
+```
+
+**Model Mapping**:
 ```
 1. Qwen/Qwen2.5-72B-Instruct-GGUF → Replaces ALL gpt-4.1 usage
    - File: qwen2.5-72b-instruct-q4_k_m.gguf
    - Size: ~42GB
    - Purpose: ResearchAgent, SummaryAgent, all general tasks
    - VRAM: ~24GB
-   - Usage: Most frequent calls in your codebase
+   - Management: Auto-load via Python SDK
 
 2. deepseek-ai/DeepSeek-R1-Distill-Qwen-32B-GGUF → Replaces ALL o3 reasoning
    - File: deepseek-r1-distill-qwen-32b-q4_k_m.gguf
    - Size: ~19GB  
    - Purpose: QuestionAgent reasoning (consolidates o3, o4-mini fallbacks)
    - VRAM: ~12GB
-   - Usage: All reasoning tasks via single model
+   - Management: Smart loading for reasoning tasks
 ```
 
 ### Phase 3: Deep Research Enhancement
@@ -78,387 +146,537 @@ brew install --cask lm-studio
    - Implementation: Phase 3 supervisor + research agents
    - Models: Uses the same 2 models above in multi-agent coordination
    - Enhanced with: Web search, iterative research, thinking content
+   - Orchestration: LM Studio SDK `.act()` API for autonomous agents
 ```
 
-### Phase 3: Specialized & Support Models
-```
-5. deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct-GGUF
-   - File: deepseek-coder-v2-lite-instruct-q4_k_m.gguf
-   - Size: ~9GB
-   - Purpose: Code analysis and generation
-   - VRAM: ~6GB
+## Phase 2: Python SDK Model Management
 
-6. BAAI/bge-m3-GGUF
-   - File: bge-m3-q4_k_m.gguf
-   - Size: ~2GB
-   - Purpose: Embeddings (handled separately)
-   - VRAM: ~1GB
-```
-
-### Phase 2 Priority Download Order
-
-**Start with these models based on your current usage**:
-
-1. **FIRST: Qwen2.5-72B-Instruct** (replaces ALL gpt-4.1 usage)
-   - Most frequent model in your codebase
-   - Used by: ResearchAgent, SummaryAgent, all general tasks
-   - Cost savings: $10/1M tokens → FREE
-
-2. **SECOND: DeepSeek-R1-Distill** (replaces ALL o3 reasoning)
-   - Consolidated reasoning model for QuestionAgent
-   - Handles all reasoning tasks (production + fallbacks)
-   - Cost savings: $60/1M tokens → FREE
-
-### Download Instructions
-1. Open LM Studio
-2. Go to "Browse" tab
-3. Search for each model name **in priority order above**
-4. Click download for the Q4_K_M quantized version
-5. Models will download to `~/.cache/lm-studio/models/`
-
-### Expected Cost Savings
-**Your current monthly OpenAI spend reduction**:
-- gpt-4.1 usage → 100% savings (most frequent calls)
-- o3 reasoning → 100% savings (high-cost reasoning)
-- **Total Phase 2 savings**: Majority of your API costs
-- **Deployment**: Only 2 models to manage via single LM Studio instance
-
-## Phase 2: Basic API Server Configuration
-
-### Step 1: Single Model Setup (Phase 2)
-1. In LM Studio, go to "Local Server" tab
-2. Load your primary model (start with Qwen2.5-72B-Instruct)
-3. Click "Start Server"
-4. Default endpoint: `http://localhost:1234`
-
-### Step 2: OpenAI Compatibility
-LM Studio automatically provides OpenAI-compatible endpoints:
-- **Chat Completions**: `POST /v1/chat/completions`
-- **Models List**: `GET /v1/models`
-- **Health Check**: `GET /v1/models`
-
-## LM Studio Model Management (Simplified)
-
-**Phase 2: Single API Endpoint Approach**
-- Use single port (1234) for all model requests
-- LM Studio handles model switching automatically or manually
-- Your code doesn't need to know which model is loaded
-
-**Model Switching Options**:
-
-**Option A: Manual Switching** (Simpler setup)
-```bash
-# Load general model when needed
-# Load reasoning model when needed  
-# Single endpoint: http://localhost:1234/v1
-```
-
-**Option B: Automatic Model Loading** (Advanced)
-```bash
-# LM Studio can auto-load models based on request patterns
-# Configure model preferences in LM Studio UI
-# Same endpoint handles both model types
-```
-
-## Phase 2: Simple LiteLLM Configuration
-
-### Option 1: Direct API Base (Phase 2 - Simplest)
-No config file needed! Just set environment variables:
-
-```bash
-# In your .env file
-OPENAI_API_BASE=http://localhost:1234/v1
-OPENAI_API_KEY=local-key  # LM Studio doesn't validate this
-```
-
-Your existing code works unchanged:
+### Step 1: Programmatic Model Loading
 ```python
+# agents/model_manager.py
+import lmstudio as lms
+import asyncio
+from typing import Dict, Optional
+
+class LMStudioModelManager:
+    def __init__(self):
+        self.client = lms.Client()
+        self.loaded_models = {}
+        self.model_configs = {
+            'qwen2.5-72b-instruct': {
+                'gpu_layers': -1,
+                'context_length': 32768,
+                'batch_size': 512
+            },
+            'deepseek-r1-distill-qwen-32b': {
+                'gpu_layers': -1,
+                'context_length': 65536,  # Larger for reasoning
+                'batch_size': 256
+            }
+        }
+    
+    async def ensure_model_loaded(self, model_name: str) -> bool:
+        """Load model if not already loaded"""
+        if model_name in self.loaded_models:
+            return True
+            
+        # Check if already loaded in backend
+        loaded = await self.client.models.list_loaded()
+        if any(m.identifier == model_name for m in loaded):
+            self.loaded_models[model_name] = True
+            return True
+            
+        # Load the model with configuration
+        try:
+            config = self.model_configs.get(model_name, {})
+            model = await self.client.models.load(model_name, config=config)
+            self.loaded_models[model_name] = model
+            print(f"✓ Loaded {model_name}")
+            return True
+        except Exception as e:
+            print(f"✗ Failed to load {model_name}: {e}")
+            return False
+    
+    async def smart_model_switching(self, task_type: str) -> str:
+        """Switch models based on task requirements"""
+        if task_type == 'reasoning':
+            model_name = 'deepseek-r1-distill-qwen-32b'
+            # Optionally unload general model to free memory
+            await self.unload_model('qwen2.5-72b-instruct')
+        else:
+            model_name = 'qwen2.5-72b-instruct'
+            
+        await self.ensure_model_loaded(model_name)
+        return model_name
+    
+    async def unload_model(self, model_name: str):
+        """Unload model to free GPU memory"""
+        if model_name in self.loaded_models:
+            try:
+                model = self.loaded_models[model_name]
+                if hasattr(model, 'unload'):
+                    await model.unload()
+                del self.loaded_models[model_name]
+                print(f"✓ Unloaded {model_name}")
+            except Exception as e:
+                print(f"✗ Failed to unload {model_name}: {e}")
+```
+
+### Step 2: Integration with LiteLLM
+```python
+# integration/enhanced_completion.py
 import litellm
-response = litellm.completion(
-    model="gpt-4.1",  # Will route to your local model
-    messages=messages
-)
+import lmstudio as lms
+from typing import Dict, Any
+
+class EnhancedCompletion:
+    """
+    Bridges LiteLLM's API abstraction with LM Studio SDK's model management
+    """
+    
+    def __init__(self, model_manager: LMStudioModelManager):
+        self.model_manager = model_manager
+        self.model_mapping = {
+            'gpt-4.1': 'qwen2.5-72b-instruct',
+            'o3': 'deepseek-r1-distill-qwen-32b',
+            'o4-mini': 'deepseek-r1-distill-qwen-32b',
+        }
+    
+    async def completion(self, model: str, messages: list, **kwargs) -> Any:
+        """
+        Enhanced completion with automatic model management
+        """
+        # Map OpenAI model to local model
+        local_model = self.model_mapping.get(model, model)
+        
+        # Ensure model is loaded via LM Studio SDK
+        await self.model_manager.ensure_model_loaded(local_model)
+        
+        # Route through LiteLLM to LM Studio's OpenAI-compatible API
+        return litellm.completion(
+            model=f"lm_studio/{local_model}",
+            messages=messages,
+            api_base="http://localhost:1234/v1",
+            api_key="local-key",  # Not validated by local server
+            **kwargs
+        )
+
+# Usage in your agents
+async def enhanced_agent_example():
+    model_manager = LMStudioModelManager()
+    completion_handler = EnhancedCompletion(model_manager)
+    
+    # This will auto-load qwen2.5-72b-instruct and route through LiteLLM
+    response = await completion_handler.completion(
+        model="gpt-4.1",
+        messages=[{"role": "user", "content": "Analyze this project"}]
+    )
+    
+    return response.choices[0].message.content
 ```
 
-### Option 2: LiteLLM Config File (Phase 3 Preparation)
-Create `litellm_config.yaml` for model mapping:
+## Phase 2: Agentic Capabilities
 
-```yaml
-model_list:
-  - model_name: gpt-4.1
-    litellm_params:
-      model: openai/qwen2.5-72b-instruct
-      api_base: http://localhost:1234/v1
-      api_key: "local-key"
-      
-  - model_name: gpt-4.1-mini  
-    litellm_params:
-      model: openai/llama-3.3-70b-instruct
-      api_base: http://localhost:1234/v1
-      api_key: "local-key"
+### LM Studio SDK's `.act()` API
+```python
+# agents/autonomous_agent.py
+import lmstudio as lms
+from typing import List, Callable
 
-# Optional: Fallbacks to OpenAI if local fails
-router_settings:
-  fallbacks:
-    - "gpt-4.1": ["openai/gpt-4"]
-    - "gpt-4.1-mini": ["openai/gpt-4o-mini"]
-```
-
-Start LiteLLM with config:
-```bash
-litellm --config litellm_config.yaml --port 8000
-```
-
-Then point your app to LiteLLM proxy:
-```bash
-export OPENAI_API_BASE=http://localhost:8000
+class AutonomousResearchAgent:
+    def __init__(self):
+        # Auto-loads model if not already loaded
+        self.model = lms.llm("qwen2.5-72b-instruct")
+    
+    async def autonomous_research(self, topic: str) -> Dict:
+        """
+        Use LM Studio's .act() API for multi-step autonomous research
+        """
+        
+        def search_web(query: str) -> str:
+            """Tool: Web search functionality"""
+            # Integrate with your search implementation
+            return f"Search results for: {query}"
+        
+        def analyze_data(data: str) -> str:
+            """Tool: Data analysis functionality"""
+            # Your analysis logic
+            return f"Analysis: {data}"
+        
+        def save_findings(findings: str) -> str:
+            """Tool: Save research findings"""
+            # Save to database or file
+            return f"Saved: {findings}"
+        
+        # Multi-round autonomous execution
+        result = await self.model.act(
+            prompt=f"Research {topic} comprehensively. Use available tools to gather information, analyze it, and save your findings.",
+            tools=[search_web, analyze_data, save_findings],
+            max_rounds=10,  # Allow up to 10 autonomous steps
+            on_message=lambda msg: print(f"🤖 Agent: {msg}")
+        )
+        
+        return {
+            "topic": topic,
+            "result": result,
+            "methodology": "autonomous-lmstudio-sdk"
+        }
 ```
 
 ## Testing by Phase
 
-### Phase 2: Verify Basic Local Model Setup
-```bash
-# Test model availability
-curl http://localhost:1234/v1/models
-
-# Test chat completion
-curl -X POST http://localhost:1234/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "qwen2.5-72b-instruct",
-    "messages": [{"role": "user", "content": "Hello, test message"}],
-    "max_tokens": 100
-  }'
-```
-
-### Phase 2: Test LiteLLM Integration
+### Phase 2: Verify Python SDK Integration
 ```python
-# test_local_models.py
+# test_lmstudio_sdk.py
+import lmstudio as lms
 import litellm
-import os
-
-# Option 1: Direct API base
-os.environ["OPENAI_API_BASE"] = "http://localhost:1234/v1"
-response = litellm.completion(
-    model="gpt-4.1",  # Your existing model name
-    messages=[{"role": "user", "content": "Test local model"}]
-)
-
-print(f"Response: {response.choices[0].message.content}")
-print(f"Model: {response.model}")
-```
-
-### Phase 2: Verify Your Agents Work
-Run your existing agent test:
-```python
-from agents.research_agent import ResearchAgent
-
-agent = ResearchAgent()
-result = agent.research("test project")
-print("✓ Agent working with local models!")
-```
-
-### Phase 3: Test Reasoning Content & Deep Research
-Test reasoning models with thinking content:
-```python
-import litellm
-import os
-
-os.environ["OPENAI_API_BASE"] = "http://localhost:1234/v1"
-
-# Test reasoning model with thinking content
-response = litellm.completion(
-    model="o4-mini",  # Will route to local QwQ-32B
-    messages=[{"role": "user", "content": "Solve this complex reasoning task step by step"}],
-    reasoning_effort="medium"
-)
-
-# Access reasoning content
-print("Response:", response.choices[0].message.content)
-print("Reasoning:", response.choices[0].message.reasoning_content)
-if hasattr(response.choices[0].message, 'thinking_blocks'):
-    print("Thinking blocks:", response.choices[0].message.thinking_blocks)
-```
-
-### Phase 3: Test Multi-Agent Deep Research
-
-```python
-# test_deep_research.py
-from agents.deep_research_supervisor import DeepResearchSupervisor
 import asyncio
 
-async def test_deep_research():
-    supervisor = DeepResearchSupervisor()
+async def test_sdk_integration():
+    """Test LM Studio Python SDK + LiteLLM integration"""
     
-    # Test multi-agent deep research
-    result = await supervisor.conduct_deep_research(
-        "Analyze the impact of AI on healthcare innovation"
+    print("1. Testing LM Studio SDK connection...")
+    client = lms.Client()
+    
+    # Test model loading
+    print("2. Loading test model...")
+    try:
+        model = await client.models.load("qwen2.5-72b-instruct")
+        print("✓ Model loaded successfully")
+    except Exception as e:
+        print(f"✗ Model loading failed: {e}")
+        return
+    
+    # Test direct SDK usage
+    print("3. Testing direct SDK completion...")
+    llm = lms.llm("qwen2.5-72b-instruct")
+    sdk_result = llm.respond("Hello, test message")
+    print(f"✓ SDK Response: {sdk_result}")
+    
+    # Test LiteLLM integration
+    print("4. Testing LiteLLM integration...")
+    litellm_result = litellm.completion(
+        model="lm_studio/qwen2.5-72b-instruct",
+        messages=[{"role": "user", "content": "Hello from LiteLLM"}],
+        api_base="http://localhost:1234/v1"
     )
+    print(f"✓ LiteLLM Response: {litellm_result.choices[0].message.content}")
     
-    print("Deep Research Results:")
-    print(f"Report: {result['report'][:200]}...")
-    print(f"Sources: {len(result['sources'])} research agents used")
-    print(f"Methodology: {result['methodology']}")
+    print("5. Testing autonomous agent (.act() API)...")
+    def simple_tool(input_text: str) -> str:
+        return f"Tool processed: {input_text}"
     
+    act_result = await llm.act(
+        prompt="Use the tool to process 'test data'",
+        tools=[simple_tool],
+        max_rounds=2
+    )
+    print(f"✓ Autonomous result: {act_result}")
+    
+    print("\n🎉 All tests passed! LM Studio SDK + LiteLLM integration working.")
+
+# Run tests
 if __name__ == "__main__":
-    asyncio.run(test_deep_research())
+    asyncio.run(test_sdk_integration())
 ```
 
-Your agents don't know they're using local models - the API calls are identical, but now with enhanced reasoning and multi-agent coordination!
+### Phase 2: Test Your Existing Agents
+```python
+# test_agent_integration.py
+from agents.research_agent import ResearchAgent
+from agents.model_manager import LMStudioModelManager
+from integration.enhanced_completion import EnhancedCompletion
+import asyncio
+
+async def test_agent_integration():
+    """Test that your existing agents work with enhanced local setup"""
+    
+    # Initialize enhanced components
+    model_manager = LMStudioModelManager()
+    completion_handler = EnhancedCompletion(model_manager)
+    
+    # Test research agent with local models
+    print("Testing ResearchAgent with local models...")
+    
+    # Modify your agent to use enhanced completion
+    class EnhancedResearchAgent(ResearchAgent):
+        def __init__(self):
+            super().__init__()
+            self.completion_handler = completion_handler
+        
+        async def research(self, project_name: str):
+            # Use enhanced completion instead of direct OpenAI/LiteLLM
+            response = await self.completion_handler.completion(
+                model="gpt-4.1",  # Will auto-load qwen2.5-72b-instruct
+                messages=[{
+                    "role": "user", 
+                    "content": f"Research project: {project_name}"
+                }]
+            )
+            return {"analysis": response.choices[0].message.content}
+    
+    # Test the enhanced agent
+    agent = EnhancedResearchAgent()
+    result = await agent.research("test project")
+    print(f"✓ Agent Result: {result['analysis'][:100]}...")
+    
+    print("🎉 Agent integration test passed!")
+
+if __name__ == "__main__":
+    asyncio.run(test_agent_integration())
+```
 
 ## Performance Optimization
 
-### Model Loading Optimization
-```yaml
-# LM Studio settings for optimal performance
-gpu_layers: -1          # Use all GPU layers
-context_length: 32768   # Maximum context
-batch_size: 512         # Batch size for parallel requests
-threads: 8              # CPU threads for non-GPU ops
+### Memory Management with Python SDK
+```python
+# performance/memory_optimizer.py
+import lmstudio as lms
+from typing import Dict
+import psutil
+
+class MemoryOptimizer:
+    def __init__(self, client: lms.Client):
+        self.client = client
+        self.memory_threshold = 0.85  # 85% VRAM usage threshold
+    
+    async def optimize_model_loading(self, required_model: str):
+        """Smart model loading with memory optimization"""
+        
+        # Check current GPU memory usage
+        gpu_usage = self.get_gpu_memory_usage()
+        
+        if gpu_usage > self.memory_threshold:
+            print(f"GPU memory at {gpu_usage:.1%}, optimizing...")
+            await self.unload_least_used_models()
+        
+        # Load required model
+        await self.client.models.load(required_model)
+    
+    def get_gpu_memory_usage(self) -> float:
+        """Get current GPU memory usage percentage"""
+        # Implementation depends on your GPU monitoring setup
+        # This is a placeholder
+        return 0.5  # 50% usage
+    
+    async def unload_least_used_models(self):
+        """Unload models that haven't been used recently"""
+        loaded_models = await self.client.models.list_loaded()
+        
+        # Implement LRU-based unloading
+        for model in loaded_models[:-1]:  # Keep the most recent one
+            await model.unload()
+            print(f"Unloaded {model.identifier} to free memory")
 ```
 
-### Memory Management
-- **Single Model**: Load one model at a time, switch as needed
-- **Multi-Model**: Use multiple ports if you have sufficient VRAM
-- **Memory Mapping**: Enable memory mapping for faster model loading
-
 ### Request Optimization
-```yaml
-# Optimize for your use case
-temperature: 0.1        # Deterministic outputs
-top_p: 0.9             # Nucleus sampling
-max_tokens: 2048       # Reasonable limit
-stream: false          # Disable if not needed
+```python
+# performance/request_optimizer.py
+import lmstudio as lms
+
+class RequestOptimizer:
+    def __init__(self):
+        self.default_config = {
+            'temperature': 0.1,      # Deterministic outputs
+            'top_p': 0.9,           # Nucleus sampling
+            'max_tokens': 2048,     # Reasonable limit
+            'stream': False,        # Disable if not needed
+            'batch_size': 512,      # Optimize for throughput
+        }
+    
+    async def optimized_completion(self, model_name: str, messages: list, **kwargs):
+        """Completion with optimized parameters"""
+        # Merge default config with custom parameters
+        config = {**self.default_config, **kwargs}
+        
+        model = lms.llm(model_name)
+        return model.respond(messages, **config)
 ```
 
 ## Monitoring and Health Checks
 
-### LM Studio Monitoring
-1. **GPU Usage**: Monitor VRAM usage in LM Studio
-2. **Request Queue**: Watch for request backlog
-3. **Response Times**: Track inference speed
-4. **Error Rates**: Monitor failed requests
-
-### Health Check Endpoint
+### LM Studio SDK Health Monitoring
 ```python
-# health_check.py
-import requests
-import time
+# monitoring/health_checker.py
+import lmstudio as lms
+import asyncio
+from datetime import datetime
 
-def check_lm_studio_health():
-    try:
-        response = requests.get("http://localhost:1234/v1/models", timeout=5)
-        if response.status_code == 200:
-            return {"status": "healthy", "models": response.json()}
-        return {"status": "unhealthy", "error": f"HTTP {response.status_code}"}
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+class LMStudioHealthChecker:
+    def __init__(self):
+        self.client = lms.Client()
+    
+    async def comprehensive_health_check(self) -> Dict[str, Any]:
+        """Comprehensive health check for LM Studio setup"""
+        
+        health_status = {
+            'timestamp': datetime.now().isoformat(),
+            'backend_service': await self.check_backend_service(),
+            'python_sdk': await self.check_python_sdk(),
+            'model_loading': await self.check_model_loading(),
+            'api_endpoints': await self.check_api_endpoints(),
+            'memory_usage': await self.check_memory_usage()
+        }
+        
+        return health_status
+    
+    async def check_backend_service(self) -> Dict[str, Any]:
+        """Check if lms CLI backend is running"""
+        try:
+            # Try to connect to the client
+            models = await self.client.models.list_loaded()
+            return {'status': 'healthy', 'loaded_models': len(models)}
+        except Exception as e:
+            return {'status': 'unhealthy', 'error': str(e)}
+    
+    async def check_python_sdk(self) -> Dict[str, Any]:
+        """Check Python SDK functionality"""
+        try:
+            # Test basic SDK operations
+            available_models = await self.client.models.list_downloaded()
+            return {'status': 'healthy', 'available_models': len(available_models)}
+        except Exception as e:
+            return {'status': 'unhealthy', 'error': str(e)}
+    
+    async def check_model_loading(self) -> Dict[str, Any]:
+        """Test model loading capability"""
+        try:
+            # Try to load a small test model
+            test_model = "llama-3.2-1b-instruct"  # Small model for testing
+            model = await self.client.models.load(test_model)
+            await model.unload()  # Clean up
+            return {'status': 'healthy', 'test_model': test_model}
+        except Exception as e:
+            return {'status': 'warning', 'message': 'Model loading test failed', 'error': str(e)}
+    
+    async def check_api_endpoints(self) -> Dict[str, Any]:
+        """Check OpenAI-compatible API endpoints"""
+        import requests
+        try:
+            response = requests.get("http://localhost:1234/v1/models", timeout=5)
+            return {'status': 'healthy', 'http_status': response.status_code}
+        except Exception as e:
+            return {'status': 'unhealthy', 'error': str(e)}
+    
+    async def check_memory_usage(self) -> Dict[str, Any]:
+        """Check system and GPU memory usage"""
+        import psutil
+        
+        return {
+            'system_memory': psutil.virtual_memory().percent,
+            'disk_usage': psutil.disk_usage('/').percent,
+            # Add GPU memory checking based on your setup
+        }
 
-# Run every 30 seconds
-while True:
-    health = check_lm_studio_health()
-    print(f"LM Studio Health: {health}")
-    time.sleep(30)
+# Continuous monitoring
+async def continuous_monitoring(interval_seconds: int = 30):
+    """Run continuous health monitoring"""
+    checker = LMStudioHealthChecker()
+    
+    while True:
+        try:
+            health = await checker.comprehensive_health_check()
+            print(f"Health Check: {health['backend_service']['status']}")
+            
+            # Alert on issues
+            if health['backend_service']['status'] != 'healthy':
+                print(f"⚠️ Backend service issue: {health['backend_service']}")
+            
+            await asyncio.sleep(interval_seconds)
+        except KeyboardInterrupt:
+            print("Monitoring stopped")
+            break
+        except Exception as e:
+            print(f"Monitoring error: {e}")
+            await asyncio.sleep(interval_seconds)
 ```
 
 ## Troubleshooting
 
-### Common Issues
+### Common Issues with Python SDK
 
-**1. Model Loading Fails**
-```
-Error: Out of memory
-Solution: Reduce batch size or use smaller quantization (Q4_K_S instead of Q4_K_M)
-```
-
-**2. Slow Response Times**
-```
-Issue: High latency
-Solutions:
-- Increase GPU memory allocation
-- Reduce context length
-- Use smaller model for non-critical tasks
-```
-
-**3. Connection Refused**
-```
-Error: Connection to localhost:1234 refused
-Solutions:
-- Verify LM Studio server is running
-- Check port isn't blocked by firewall
-- Confirm model is loaded in LM Studio
-```
-
-**4. LiteLLM Mapping Issues**
-```
-Error: Model not found
-Solutions:
-- Verify model name in litellm_config.yaml
-- Check api_base URL is correct
-- Confirm LM Studio model matches config
-```
-
-### Debug Commands
+**1. SDK Connection Failed**
 ```bash
-# Check GPU usage
-nvidia-smi
-
-# Monitor LM Studio logs
-tail -f ~/.lm-studio/logs/server.log
-
-# Test API endpoints
-curl -v http://localhost:1234/v1/models
-
-# Check process
-ps aux | grep lm-studio
+Error: Cannot connect to LM Studio
+Solution: 
+- Ensure lms CLI backend is running: `lms status`
+- Start backend if needed: `lms server start`
+- Check Python SDK installation: `pip list | grep lmstudio`
 ```
 
-## Production Deployment
+**2. Model Loading Fails**
+```python
+# Debug model loading
+import lmstudio as lms
 
-### Systemd Service (Linux)
-```ini
-# /etc/systemd/system/lm-studio.service
-[Unit]
-Description=LM Studio Model Server
-After=network.target
-
-[Service]
-Type=simple
-User=your-username
-ExecStart=/path/to/lm-studio server start qwen2.5-72b-instruct-q4_k_m.gguf --port 1234
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
+async def debug_model_loading():
+    client = lms.Client()
+    
+    # Check available models
+    downloaded = await client.models.list_downloaded()
+    print("Downloaded models:", [m.identifier for m in downloaded])
+    
+    # Check loaded models
+    loaded = await client.models.list_loaded()
+    print("Loaded models:", [m.identifier for m in loaded])
+    
+    # Try loading with error handling
+    try:
+        model = await client.models.load("your-model-name")
+        print("✓ Model loaded successfully")
+    except Exception as e:
+        print(f"✗ Loading failed: {e}")
+        # Check specific error types and solutions
 ```
 
-```bash
-# Enable and start service
-sudo systemctl enable lm-studio
-sudo systemctl start lm-studio
-sudo systemctl status lm-studio
+**3. Memory Issues**
+```python
+# Memory optimization strategies
+async def handle_memory_issues():
+    client = lms.Client()
+    
+    # Unload all models to free memory
+    loaded = await client.models.list_loaded()
+    for model in loaded:
+        await model.unload()
+        print(f"Unloaded {model.identifier}")
+    
+    # Load model with smaller configuration
+    model = await client.models.load(
+        "your-model",
+        config={
+            'gpu_layers': 20,  # Reduce GPU layers
+            'context_length': 16384,  # Smaller context
+            'batch_size': 256  # Smaller batch
+        }
+    )
 ```
 
-### Docker Deployment (Advanced)
-```dockerfile
-# Dockerfile for LM Studio
-FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+**4. LiteLLM Integration Issues**
+```python
+# Test LiteLLM + LM Studio integration
+import litellm
+import requests
 
-# Install LM Studio and dependencies
-RUN apt-get update && apt-get install -y wget
-RUN wget https://lmstudio.ai/download/linux -O lmstudio.AppImage
-RUN chmod +x lmstudio.AppImage
-
-# Copy models and config
-COPY models/ /app/models/
-COPY config/ /app/config/
-
-# Expose API port
-EXPOSE 1234
-
-# Start LM Studio server
-CMD ["./lmstudio.AppImage", "server", "start", "--port", "1234"]
+def test_integration():
+    # Check if LM Studio API is accessible
+    try:
+        response = requests.get("http://localhost:1234/v1/models")
+        print(f"API Status: {response.status_code}")
+        print(f"Available models: {response.json()}")
+    except Exception as e:
+        print(f"API Error: {e}")
+    
+    # Test LiteLLM routing
+    try:
+        result = litellm.completion(
+            model="lm_studio/your-model",
+            messages=[{"role": "user", "content": "test"}],
+            api_base="http://localhost:1234/v1"
+        )
+        print(f"✓ LiteLLM integration working")
+    except Exception as e:
+        print(f"✗ LiteLLM error: {e}")
 ```
 
 ## 3-Phase Quick Start Checklist
@@ -467,117 +685,75 @@ CMD ["./lmstudio.AppImage", "server", "start", "--port", "1234"]
 - **✓ Complete First**: AI agents using `litellm.completion()` calls
 - **✓ Working Setup**: OpenAI models through LiteLLM
 
-### Phase 2: Local Models 🎯
-1. **📋 Install LM Studio**: Download and set up on your machine
-2. **📦 Download Basic Models**: 
-   - General: Qwen2.5-72B-Instruct (42GB)
-   - Alternative: Llama-3.3-70B-Instruct (40GB)
-3. **🚀 Start Single Server**: Load model and start local server on port 1234
-4. **⚙️ Set Environment**: `export OPENAI_API_BASE=http://localhost:1234/v1`
-5. **🧪 Test Basic Local**: Run your existing agents - they'll use local models automatically
-6. **📊 Monitor Usage**: LiteLLM automatically tracks costs and usage
+### Phase 2: Enhanced Local Models with Python SDK 🎯
+1. **📋 Install Components**: 
+   - LM Studio (includes lms CLI backend)
+   - LM Studio Python SDK via `pip install lmstudio`
+2. **🚀 Start Backend Service**: `lms server start`
+3. **📦 Download Models via SDK**: 
+   - General: `await client.models.download("qwen2.5-72b-instruct")`
+   - Reasoning: `await client.models.download("deepseek-r1-distill-qwen-32b")`
+4. **🔧 Implement Enhanced Integration**: LiteLLM + LM Studio SDK bridge
+5. **🧪 Test Programmatic Control**: Verify auto-loading and model switching
+6. **📊 Monitor Performance**: SDK-based health checking and optimization
 
-### Phase 3: Multi-Agent Deep Research 🚀
-7. **📦 Download Reasoning Models**: 
-   - QwQ-32B-Preview (19GB) for thinking content
-   - DeepSeek-R1-Distill-Qwen-32B (19GB) alternative
-8. **🏗️ Multi-Model Setup**: Run general + reasoning models simultaneously (ports 1234 + 1235)
-9. **🔧 Implement Deep Research**: Build supervisor + research agent pattern
-10. **🌐 Configure Search Engines**: Set up Tavily, SearXNG, academic search
-11. **🔄 Replace o3/o4 Deep Research**: Use local reasoning models instead of OpenAI
-12. **🧠 Test Reasoning Content**: Verify access to thinking/reasoning traces
-13. **🧪 Test Multi-Agent**: Verify deep research coordination works locally
+### Phase 3: Autonomous Multi-Agent Deep Research 🚀
+7. **🤖 Implement Agentic Flows**: Use LM Studio SDK's `.act()` API
+8. **🏗️ Build Deep Research Supervisor**: Multi-agent coordination with SDK
+9. **🌐 Configure Enhanced Search**: Integrate web search with autonomous agents
+10. **🔄 Replace o3/o4 Deep Research**: Local reasoning models + autonomous behavior
+11. **🧠 Test Autonomous Capabilities**: Verify multi-step tool usage
+12. **🚀 Deploy Production System**: Complete local deep research pipeline
 
 ## Expected Results by Phase
 
-### Phase 2 Results: Local Models
-- **Same Code**: Your agents use `litellm.completion()` unchanged
-- **Local Models**: Inference happens on your hardware  
-- **Same Interface**: OpenAI-compatible responses
-- **No API Costs**: No charges for local inference
-- **Built-in Cost Tracking**: LiteLLM automatically tracks usage and costs
+### Phase 2 Results: Enhanced Local Models with Python SDK
+- **Programmatic Control**: Complete model management via Python code
+- **Auto-Loading**: Models loaded automatically when needed
+- **Smart Resource Management**: Memory optimization and model switching
+- **Unified Interface**: LiteLLM + LM Studio SDK seamless integration
+- **No GUI Dependency**: CLI backend + Python SDK only
 
-### Phase 3 Results: Deep Research System
-- **Enhanced Reasoning**: Access to `reasoning_content` and `thinking_blocks`
-- **Multi-Agent Coordination**: Supervisor orchestrates multiple research agents
-- **Comprehensive Search**: Multiple search engines for complete coverage
+### Phase 3 Results: Autonomous Deep Research System
+- **Autonomous Agents**: Multi-step research using `.act()` API
+- **Tool Integration**: Agents can use web search, analysis, and data tools
+- **Multi-Agent Coordination**: Supervisor orchestrates research tasks
 - **Cost Elimination**: No more OpenAI o3/o4 deep research costs
-- **Privacy**: Complete local processing for sensitive research
+- **Enhanced Capabilities**: Local reasoning with autonomous behavior
 
 ### Advanced Features Available
-- **Reasoning Models**: QwQ-32B and DeepSeek-R1 with thinking content
-- **Web Search**: Built-in web search capabilities via LiteLLM
-- **Native Usage Tracking**: Automatic cost and usage monitoring
-- **Easy Scaling**: Add multiple models or fallbacks via config
-
-### Phase 3: Deep Research Multi-Model Setup
-
-**Running Multiple Models Simultaneously for Deep Research**:
-
-1. **General Model** (Port 1234): Qwen2.5-72B for general tasks
-2. **Reasoning Model** (Port 1235): QwQ-32B for deep research with thinking content
-
-```bash
-# Terminal 1: Start general model
-cd /path/to/lmstudio
-./bin/lms load qwen2.5-72b-instruct --port 1234
-
-# Terminal 2: Start reasoning model  
-./bin/lms load qwq-32b-preview --port 1235
-```
-
-**Configuration for Multi-Agent Deep Research**:
-```python
-# Configure different endpoints for different tasks
-GENERAL_MODEL_BASE = "http://localhost:1234/v1"
-REASONING_MODEL_BASE = "http://localhost:1235/v1"
-
-# Deep research supervisor can route to appropriate models
-general_response = litellm.completion(
-    model="qwen2.5-72b-instruct",
-    api_base=GENERAL_MODEL_BASE,
-    messages=[{"role": "user", "content": "Generate research plan"}]
-)
-
-reasoning_response = litellm.completion(
-    model="qwq-32b-preview", 
-    api_base=REASONING_MODEL_BASE,
-    messages=[{"role": "user", "content": "Analyze complex data"}],
-    reasoning_effort="high"  # Access thinking content
-)
-```
-
-**Benefits of Multi-Model Setup**:
-- **Specialization**: Each model optimized for specific tasks
-- **Performance**: Parallel processing of general and reasoning tasks
-- **Cost-effective**: No OpenAI o3/o4 API costs
-- **Local**: Complete privacy and control over deep research process
+- **Agentic Flows**: `.act()` API for autonomous multi-step execution
+- **Model Management**: Programmatic loading, unloading, and configuration
+- **Resource Optimization**: Smart memory management and model switching
+- **Easy Scaling**: Add multiple models or advanced orchestration
+- **Complete Privacy**: All processing stays local
 
 ## Migration Success
 
-Your AI agents won't know they've gone through this complete transformation:
+Your AI agents experience a seamless transformation:
 1. **Phase 1**: OpenAI → LiteLLM (same models, zero changes)
-2. **Phase 2**: LiteLLM → Local Models (same interface, local processing)  
-3. **Phase 3**: Local Models → Multi-Agent Deep Research (enhanced capabilities)
+2. **Phase 2**: LiteLLM → LM Studio SDK (programmatic local models)  
+3. **Phase 3**: Local Models → Autonomous Agents (enhanced capabilities)
 
-**The power of LiteLLM's unified interface**: Your business logic and prompts never changed, but you now have a complete local deep research system!
+**The power of the enhanced architecture**: Your business logic never changed, but you now have autonomous local agents with programmatic control!
 
 ## Support & Resources
 
-- **LM Studio Docs**: https://lmstudio.ai/docs
-- **LiteLLM Docs**: https://docs.litellm.ai/
+- **LM Studio Python SDK Docs**: https://lmstudio.ai/docs/python
+- **LM Studio CLI Docs**: https://lmstudio.ai/docs/cli  
+- **LiteLLM + LM Studio**: https://docs.litellm.ai/docs/providers/lm_studio
+- **GitHub**: https://github.com/lmstudio-ai/lmstudio-python
 - **Model Hub**: https://huggingface.co/models
-- **GPU Requirements**: Use HuggingFace model cards for VRAM estimates
-- **Community**: LM Studio Discord + LiteLLM GitHub for troubleshooting
+- **Community**: LM Studio Discord for troubleshooting
 
 ## Migration Philosophy
 
-**Start Simple, Scale Smart**: 
-- Phase 2: One model, basic local processing
-- Phase 3: Multi-model, advanced deep research
-- Your code adapts automatically to increased capabilities!
+**Programmatic First**: 
+- Phase 2: Python SDK for complete programmatic control
+- Phase 3: Autonomous agents with `.act()` API
+- Your code gains advanced capabilities automatically!
 
-**Cost & Privacy Benefits**:
-- Phase 2: Eliminate standard API costs  
-- Phase 3: Eliminate expensive o3/o4 deep research costs
-- All processing stays local for complete privacy
+**Enhanced Benefits**:
+- Phase 2: Eliminate API costs + gain programmatic control
+- Phase 3: Eliminate expensive deep research + gain autonomous capabilities
+- Complete local processing with enhanced agent behaviors
