@@ -49,36 +49,45 @@ brew install --cask lm-studio
 
 ## Model Downloads by Phase
 
-### Phase 2: Basic Local Models
+### Phase 2: Your Current Model Replacements
+
+**For your specific codebase** (based on analysis of current usage):
+
 ```
-1. Qwen/Qwen2.5-72B-Instruct-GGUF
+1. Qwen/Qwen2.5-72B-Instruct-GGUF → Replaces gpt-4.1
    - File: qwen2.5-72b-instruct-q4_k_m.gguf
    - Size: ~42GB
-   - Purpose: General purpose replacement for GPT-4.1
+   - Purpose: ResearchAgent, SummaryAgent, QuestionAgent fallback
    - VRAM: ~24GB
+   - Current usage: agents/research_agent.py, agents/summary_agent.py
+   - Port: 1234
 
-2. microsoft/Llama-3.3-70B-Instruct-GGUF  
-   - File: llama-3.3-70b-instruct-q4_k_m.gguf
-   - Size: ~40GB
-   - Purpose: Alternative general model
-   - VRAM: ~22GB
-```
-
-### Phase 3: Reasoning Models for Deep Research
-```
-3. Qwen/QwQ-32B-Preview-GGUF
-   - File: qwq-32b-preview-q4_k_m.gguf
+2. Qwen/QwQ-32B-Preview-GGUF → Replaces o4-mini (reasoning)
+   - File: qwq-32b-preview-q4_k_m.gguf  
    - Size: ~19GB
-   - Purpose: Local reasoning with thinking/reasoning content
+   - Purpose: QuestionAgent development/fallback reasoning
    - VRAM: ~12GB
-   - Supports: reasoning_content and thinking_blocks
+   - Current usage: config/config.py QUESTION_AGENT_CONFIG
+   - Port: 1235
+```
 
-4. deepseek-ai/DeepSeek-R1-Distill-Qwen-32B-GGUF
+### Phase 3: Advanced Reasoning for Production
+
+```
+3. deepseek-ai/DeepSeek-R1-Distill-Qwen-32B-GGUF → Replaces o3 (production reasoning)
    - File: deepseek-r1-distill-qwen-32b-q4_k_m.gguf
    - Size: ~19GB
-   - Purpose: Alternative reasoning model with thinking
+   - Purpose: QuestionAgent production reasoning analysis
    - VRAM: ~12GB
+   - Current usage: config/config.py production reasoning model
    - Supports: reasoning_content and thinking_blocks
+   - Port: 1235 (can alternate with QwQ-32B)
+
+4. Multi-Agent Deep Research System → Replaces o4-mini-deep-research
+   - Purpose: Replace expensive $200/1M token deep research
+   - Current usage: config/config.py DEEP_RESEARCH_CONFIG
+   - Implementation: Phase 3 supervisor + research agents
+   - Models: Combination of general + reasoning models above
 ```
 
 ### Phase 3: Specialized & Support Models
@@ -96,12 +105,36 @@ brew install --cask lm-studio
    - VRAM: ~1GB
 ```
 
+### Phase 2 Priority Download Order
+
+**Start with these models based on your current usage**:
+
+1. **FIRST: Qwen2.5-72B-Instruct** (replaces gpt-4.1)
+   - Most used model in your codebase
+   - Used by: ResearchAgent, SummaryAgent, QuestionAgent fallback
+   - Cost savings: $10/1M tokens → FREE
+
+2. **SECOND: QwQ-32B-Preview** (replaces o4-mini reasoning)  
+   - QuestionAgent development/testing reasoning
+   - Cost savings: $15/1M tokens → FREE
+
+3. **THIRD: DeepSeek-R1-Distill** (replaces o3 reasoning)
+   - QuestionAgent production reasoning  
+   - Cost savings: $60/1M tokens → FREE
+
 ### Download Instructions
 1. Open LM Studio
 2. Go to "Browse" tab
-3. Search for each model name
+3. Search for each model name **in priority order above**
 4. Click download for the Q4_K_M quantized version
 5. Models will download to `~/.cache/lm-studio/models/`
+
+### Expected Cost Savings
+**Your current monthly OpenAI spend reduction**:
+- gpt-4.1 usage → 100% savings (most frequent)
+- o4-mini reasoning → 100% savings  
+- o3 reasoning → 100% savings
+- **Total Phase 2 savings**: Majority of your API costs
 
 ## Phase 2: Basic API Server Configuration
 

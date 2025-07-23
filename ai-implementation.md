@@ -188,27 +188,32 @@ deep_research_agent = DeepResearchAgent(None, db_manager, usage_tracker)
 
 ## Phase 2: Prepare for Local Models
 
-### 5. Environment Configuration & Future Features
+### 5. Environment Configuration & Multi-Model Setup
 
-**Your Task**: Update `.env` and add configuration variables for Phase 2
+**Your Task**: Update `.env` for multi-model local deployment in Phase 2
 
 **Add to `.env`**:
 ```bash
 # Existing
 OPENAI_API_KEY=your_openai_key
 
-# New for LiteLLM (Phase 2 - LM Studio)  
-LM_STUDIO_API_BASE=http://localhost:1234/v1
+# Phase 2: Multi-Model LM Studio Configuration
+LM_STUDIO_API_BASE=http://localhost:1234/v1      # General models (gpt-4.1)
+REASONING_MODEL_BASE=http://localhost:1235/v1    # Reasoning models (o3, o4-mini)
 LM_STUDIO_API_KEY=local-key
 
 # Feature flags for Phase 2
-USE_LOCAL_MODELS=false  # Set to true in Phase 2
-USE_REASONING_MODELS=true  # Support thinking/reasoning content
+USE_LOCAL_MODELS=false  # Set to true to activate Phase 2
+USE_REASONING_MODELS=true  # Enable o3/o4-mini reasoning
 ENABLE_WEB_SEARCH=false  # Optional web search capability
 
-# Optional for enhanced research (Phase 2)
-USE_OPEN_DEEP_RESEARCH=false
-TAVILY_API_KEY=your_tavily_key  # For web search if enabled
+# Phase 3 preparation
+USE_DEEP_RESEARCH_REPLACEMENT=false  # Phase 3: Replace o4-mini-deep-research
+TAVILY_API_KEY=your_tavily_key  # For web search in Phase 3
+
+# Model routing (Phase 2)
+GENERAL_MODEL_PORT=1234      # For gpt-4.1 → Qwen2.5-72B  
+REASONING_MODEL_PORT=1235    # For o3/o4-mini → QwQ-32B/DeepSeek-R1
 ```
 
 **Add to `config/config.py`**:
@@ -217,21 +222,73 @@ TAVILY_API_KEY=your_tavily_key  # For web search if enabled
 LITELLM_CONFIG = {
     'use_local_models': os.getenv('USE_LOCAL_MODELS', 'false').lower() == 'true',
     'lm_studio_base_url': os.getenv('LM_STUDIO_API_BASE', 'http://localhost:1234/v1'),
+    'reasoning_model_base_url': os.getenv('REASONING_MODEL_BASE', 'http://localhost:1235/v1'),
+    
+    # Phase 2: Current OpenAI → Local OSS Model Mapping
     'model_mapping': {
-        # Phase 2: Map to local models when USE_LOCAL_MODELS=true
-        'gpt-4.1': 'openai/qwen2.5-72b-instruct',
-        'gpt-4.1-mini': 'openai/llama-3.3-70b-instruct',
-        'o4-mini': 'openai/qwq-32b-preview',  # Reasoning model mapping
-        'o3-mini': 'openai/deepseek-r1-distill-qwen-32b',
+        # Core models found in codebase
+        'gpt-4.1': 'openai/qwen2.5-72b-instruct',           # Research, Summary, Question agents
+        'o4-mini': 'openai/qwq-32b-preview',                # Question agent reasoning (production fallback)
+        'o3': 'openai/deepseek-r1-distill-qwen-32b',        # Question agent reasoning (production)
+        
+        # Deep research models - Phase 3 replacement targets
+        'o4-mini-deep-research-2025-06-26': 'openai/qwq-32b-preview',  # Will become multi-agent system
+        
+        # Archive models (for completeness)
+        'gpt-4.1-nano-2025-04-14': 'openai/llama-3.3-70b-instruct',   # From archive files
+        
+        # Fallback mappings
+        'gpt-4': 'openai/qwen2.5-72b-instruct',            # General fallback
+        'gpt-4.1-mini': 'openai/llama-3.3-70b-instruct',   # Smaller tasks
+    },
+    
+    # Cost savings tracking
+    'cost_comparison': {
+        'gpt-4.1': {'openai': 0.00001, 'local': 0.0},      # $10/1M → Free
+        'o4-mini': {'openai': 0.000015, 'local': 0.0},     # $15/1M → Free  
+        'o3': {'openai': 0.00006, 'local': 0.0},           # $60/1M → Free
+        'o4-mini-deep-research': {'openai': 0.0002, 'local': 0.0}  # $200/1M → Free
     }
 }
 ```
 
-**Purpose**: Ready for Phase 2 local model switching and enhanced reasoning capabilities.
+**Purpose**: Ready for Phase 2 local model switching with your current model usage mapped to OSS equivalents.
 
 ---
 
-### 6. Enhanced Capabilities for Phase 2
+### 6. Current Model Inventory & Phase 2 Mapping
+
+**Your Current OpenAI Models** (found in codebase):
+
+| Agent/Component | Current Model | Usage Location | Phase 2 Local Equivalent |
+|---|---|---|---|
+| **ResearchAgent** | `gpt-4.1` | `agents/research_agent.py:173` | `qwen2.5-72b-instruct` |
+| **SummaryAgent** | `gpt-4.1` | `agents/summary_agent.py:84` | `qwen2.5-72b-instruct` |
+| **QuestionAgent (Production)** | `o3` | `config/config.py:106` | `deepseek-r1-distill-qwen-32b` |
+| **QuestionAgent (Dev)** | `o4-mini` | `config/config.py:107` | `qwq-32b-preview` |
+| **QuestionAgent (Fallback)** | `gpt-4.1` | `config/config.py:115` | `qwen2.5-72b-instruct` |
+| **DeepResearchAgent** | `o4-mini-deep-research-2025-06-26` | `config/config.py:91` | **Phase 3**: Multi-agent system |
+| **DeepResearchAgent (Priming)** | `gpt-4.1` | `config/config.py:92` | `qwen2.5-72b-instruct` |
+
+**Phase 2 Cost Savings**:
+- **gpt-4.1**: $10/1M tokens → **FREE** (100% savings)
+- **o3**: $60/1M tokens → **FREE** (100% savings)  
+- **o4-mini**: $15/1M tokens → **FREE** (100% savings)
+- **o4-mini-deep-research**: $200/1M tokens → **Phase 3** replacement target
+
+**Required LM Studio Models for Phase 2**:
+```bash
+# Port 1234: General Purpose (gpt-4.1 replacement)
+qwen2.5-72b-instruct-q4_k_m.gguf     # 42GB, ~24GB VRAM
+
+# Port 1235: Reasoning Models (o3/o4-mini replacement)  
+qwq-32b-preview-q4_k_m.gguf          # 19GB, ~12GB VRAM
+deepseek-r1-distill-qwen-32b-q4_k_m.gguf  # 19GB, ~12GB VRAM (alternative)
+```
+
+---
+
+### 7. Enhanced Capabilities for Phase 2
 
 **Your Task**: Prepare for advanced features when using local models
 
