@@ -102,22 +102,47 @@ DEEP_RESEARCH_CONFIG = {
     ]
 }
 
-# Question Agent Reasoning Model Configuration  
-# Using OpenAI o-series reasoning models for complex multi-source analysis
+# Question Agent Two-Step Configuration
+# Step 1: Research with web search, Step 2: Analysis with reasoning
 QUESTION_AGENT_CONFIG = {
-    'reasoning_model': {
-        'production': 'o3',      # Advanced reasoning for production analysis
-        'development': 'o4-mini', # Cost-effective reasoning for dev/testing
-        'effort': 'medium',       # Balance between speed and reasoning quality
-        'max_output_tokens': 25000,  # Reserve space for reasoning + output
-        'use_reasoning': True,    # Enable reasoning tokens for complex analysis
-        'include_reasoning_summary': True  # Get reasoning summary for transparency
+    # Research Step: Web search for gathering information
+    'research_model': {
+        'production': 'gpt-4o-search-preview',      # Web search enabled for data gathering
+        'development': 'gpt-4o-search-preview',     # Consistent across environments
+        'max_output_tokens': 4000,   # Standard output tokens for search model
+        'use_reasoning': False,      # Research step doesn't need reasoning
+        'enable_web_search': True    # REQUIRED for information gathering
     },
-    'fallback_model': 'gpt-4.1',  # Fallback if reasoning models unavailable
-    'use_web_search': True,       # Enable web search for data enrichment
+    
+    # Analysis Step: Reasoning model for deep analysis of research
+    'reasoning_model': {
+        'production': 'o4-mini',    # Cost-effective reasoning model for production
+        'development': 'o4-mini',   # Same model for dev/testing (consistent & affordable)
+        'effort': 'medium',         # Balance between speed and reasoning quality
+        'max_output_tokens': 8000,  # Higher tokens for reasoning analysis
+        'use_reasoning': True,      # Enable reasoning tokens extraction
+        'include_reasoning_summary': True,  # Include reasoning summary in response
+        'reasoning_effort': 'medium'  # Reasoning effort level
+    },
+    
+    # Fallback configuration
+    'fallback_research_model': 'gpt-4o',           # Fallback if search model unavailable
+    'fallback_reasoning_model': 'o3-mini',         # Fallback reasoning model (cheaper than o1)
+    'use_web_search': True,       # Enable web search for data enrichment (REQUIRED)
+    
+    # Context optimization for two-step process
     'context_optimization': {
-        'max_context_length': 15000,  # Truncate context to fit reasoning space
-        'preserve_sections': ['general_research', 'deep_research', 'question_focus']
+        'max_research_context': 12000,  # Max context for research step
+        'max_analysis_context': 15000,  # Max context for analysis step (includes research)
+        'preserve_sections': ['general_research', 'deep_research', 'question_focus', 'research_results']
+    },
+    
+    # Two-step workflow settings
+    'workflow': {
+        'enable_two_step': True,    # Enable research -> analysis workflow
+        'research_timeout': 120,    # Timeout for research step (seconds)
+        'analysis_timeout': 180,    # Timeout for analysis step (seconds)
+        'combine_results': True     # Combine research and analysis in final output
     }
 }
 

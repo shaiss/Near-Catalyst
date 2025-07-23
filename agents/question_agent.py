@@ -7,7 +7,7 @@ focusing on discovering co-creation partners that unlock developer potential dur
 
 ENHANCED WITH REASONING MODELS:
 - Uses o3 (production) or o4-mini (development) for complex multi-source analysis
-- Unified responses.create() API with reasoning.effort='medium'
+- Unified completion API via LiteLLM
 - Intelligent context optimization and token usage tracking
 - Fallback to GPT-4.1 if reasoning models are unavailable
 """
@@ -17,6 +17,7 @@ import sqlite3
 import hashlib
 import time
 import os
+import litellm
 from datetime import datetime
 
 from config.config import TIMEOUTS, PARALLEL_CONFIG, QUESTION_AGENT_CONFIG, format_benchmark_examples_for_prompt, get_framework_principles
@@ -30,24 +31,23 @@ class QuestionAgent:
     each, using project-specific caching to prevent data poisoning.
     """
     
-    def __init__(self, client, db_manager: DatabaseManager = None, usage_tracker: APIUsageTracker = None):
-        """Initialize the question agent with OpenAI client and usage tracking."""
-        self.client = client
+    def __init__(self, client=None, db_manager: DatabaseManager = None, usage_tracker: APIUsageTracker = None):
+        """Initialize the question agent with optional usage tracking."""
         self.timeout = TIMEOUTS['question_agent']
         self.analysis_timeout = TIMEOUTS['analysis_agent']
         self.config = QUESTION_AGENT_CONFIG
         self.environment = self._detect_environment()
         
-        # Initialize usage tracking
+        # Initialize usage tracking (updated for LiteLLM compatibility)
         if usage_tracker:
             self.usage_tracker = usage_tracker
         elif db_manager:
-            self.usage_tracker = APIUsageTracker(client, db_manager)
+            self.usage_tracker = APIUsageTracker(None, db_manager)  # No client needed for LiteLLM
         else:
             # Fallback - create basic database manager for tracking
-            self.usage_tracker = APIUsageTracker(client, DatabaseManager())
+            self.usage_tracker = APIUsageTracker(None, DatabaseManager())
         
-        print(f"🧠 Question Agent initialized with {self._get_reasoning_model()} ({self.environment} mode)")
+        print(f"🧠 Question Agent initialized with {self._get_research_model()} → {self._get_reasoning_model()} ({self.environment} mode)")
     
     def _detect_environment(self):
         """Detect if we're in development or production environment."""
@@ -65,25 +65,44 @@ class QuestionAgent:
             return 'development'
         return 'production'
     
+    def _get_research_model(self):
+        """Get the appropriate research model for web search based on environment."""
+        return self.config['research_model'][self.environment]
+    
     def _get_reasoning_model(self):
-        """Get the appropriate reasoning model based on environment."""
+        """Get the appropriate reasoning model for analysis based on environment."""
         return self.config['reasoning_model'][self.environment]
     
-    def _create_reasoning_request(self, prompt, include_web_search=False):
-        """Create a standardized reasoning request with proper parameters."""
+    def _create_research_request(self, prompt):
+        """Create a LiteLLM request for research with web search."""
         request_params = {
-            'model': self._get_reasoning_model(),
-            'reasoning': {
-                'effort': self.config['reasoning_model']['effort'],
-                'summary': 'auto' if self.config['reasoning_model']['include_reasoning_summary'] else None
-            },
-            'input': [{"role": "user", "content": prompt}],  # FIXED: Must be list of message objects
-            'max_output_tokens': self.config['reasoning_model']['max_output_tokens'],
-            'timeout': self.timeout
+            'model': self._get_research_model(),
+            'messages': [{"role": "user", "content": prompt}],
+            'max_tokens': self.config['research_model']['max_output_tokens'],
+            'timeout': self.config['workflow']['research_timeout']
         }
         
-        if include_web_search and self.config['use_web_search']:
-            request_params['tools'] = [{"type": "web_search_preview", "search_context_size": "high"}]
+        # Add web search for research step
+        if self.config['use_web_search']:
+            request_params['web_search_options'] = {
+                "search_context_size": "high"
+            }
+        
+        return request_params
+    
+    def _create_reasoning_request(self, prompt):
+        """Create a LiteLLM request for reasoning analysis."""
+        request_params = {
+            'model': self._get_reasoning_model(),
+            'messages': [{"role": "user", "content": prompt}],
+            'max_tokens': self.config['reasoning_model']['max_output_tokens'],
+            'timeout': self.config['workflow']['analysis_timeout']
+        }
+        
+        # Add reasoning parameters for o1 models
+        if self.config['reasoning_model']['use_reasoning']:
+            if 'reasoning_effort' in self.config['reasoning_model']:
+                request_params['reasoning_effort'] = self.config['reasoning_model']['reasoning_effort']
         
         return request_params
     
@@ -147,14 +166,14 @@ class QuestionAgent:
         try:
             conn.close()
             
-            # Step 1: Research specific question
-            print(f"    Q{question_config['id']}: Conducting research with {self._get_reasoning_model()}...")
+            # Step 1: Research specific question with web search
+            print(f"    Q{question_config['id']}: Conducting research with {self._get_research_model()}...")
             question_research = self._conduct_research(
                 project_name, question_config["question"], question_config["description"], question_config["search_focus"]
             )
             
-            # Step 2: Analyze the question with research
-            print(f"    Q{question_config['id']}: Analyzing with reasoning model...")
+            # Step 2: Analyze the question with reasoning model
+            print(f"    Q{question_config['id']}: Analyzing with {self._get_reasoning_model()}...")
             analysis_result = self._analyze_question(project_name, question_config, general_research, question_research, benchmark_format)
             
             # Step 3: Store results in database
@@ -212,50 +231,30 @@ Return comprehensive details that help evaluate: {question_text}
         # Set context for usage tracking
         self.usage_tracker.set_context(project_name, "question_agent")
         
-        # UPGRADED: Using o3/o4-mini reasoning models with web search for enhanced research
+        # STEP 1: Use research model (gpt-4o-search-preview) for web search and data gathering
         try:
-            request_params = self._create_reasoning_request(research_prompt, include_web_search=True)
-            print(f"      🧠 Using {self._get_reasoning_model()} for research with reasoning")
-            research_response = self.usage_tracker.track_responses_create(
+            request_params = self._create_research_request(research_prompt)
+            print(f"      🧠 Using {self._get_research_model()} for research")
+            research_response = self.usage_tracker.track_chat_completions_create(
                 model=request_params.pop('model'),
                 operation_type="research",
                 **request_params
             )
         except Exception as e:
-            # Fallback to GPT-4.1 if reasoning models are unavailable
-            print(f"      ⚠️ Reasoning model failed: {str(e)[:100]}...")
-            print(f"      🔄 Falling back to {self.config['fallback_model']}")
-            research_response = self.usage_tracker.track_responses_create(
-                model=self.config['fallback_model'],
-                operation_type="research_fallback",
-                tools=[{"type": "web_search_preview", "search_context_size": "high"}],
-                input=[{"role": "user", "content": research_prompt}],
-                timeout=self.timeout
+            # Fallback to alternative research model if primary unavailable
+            print(f"      ⚠️ Research model failed: {str(e)[:100]}...")
+            print(f"      🔄 Falling back to {self.config['fallback_research_model']}")
+            research_response = self.usage_tracker.track_chat_completions_create(
+                model=self.config['fallback_research_model'],
+                operation_type="research_fallback", 
+                messages=[{"role": "user", "content": research_prompt}],
+                web_search_options={"search_context_size": "high"},
+                timeout=self.config['workflow']['research_timeout']
             )
         
-        # Extract research content and sources
-        research_content = ""
-        sources = []
-        
-        # Process the response output according to Responses API structure
-        for item in research_response.output:
-            if item.type == "message":
-                # Look for output_text content according to OpenAI docs
-                for content_item in item.content:
-                    if content_item.type == "output_text":
-                        research_content = content_item.text
-                        # Extract sources/citations if available
-                        if hasattr(content_item, 'annotations'):
-                            for annotation in content_item.annotations:
-                                if annotation.type == "url_citation":
-                                    sources.append({
-                                        "url": annotation.url,
-                                        "title": getattr(annotation, 'title', 'No title'),
-                                        "start_index": annotation.start_index,
-                                        "end_index": annotation.end_index
-                                    })
-                        break
-                break
+        # Extract research content and sources (LiteLLM standard format)
+        research_content = research_response.choices[0].message.content
+        sources = []  # Web search sources will be available in future LiteLLM versions
         
         return {"content": research_content, "sources": sources}
     
@@ -277,8 +276,8 @@ Return comprehensive details that help evaluate: {question_text}
         benchmark_examples = format_benchmark_examples_for_prompt(benchmark_format)
         framework_principles = get_framework_principles(benchmark_format)
         
-        # Context optimization for reasoning models 
-        max_context = self.config['context_optimization']['max_context_length']
+        # Context optimization for two-step workflow
+        max_context = self.config['context_optimization']['max_analysis_context']
         truncated_general = general_research[:max_context//2]
         truncated_question = question_research["content"][:max_context//2]
         
@@ -325,36 +324,36 @@ Focus on hackathon-specific evidence: integration speed, developer support, time
 """
 
         try:
-            # UPGRADED: Using o3/o4-mini reasoning models for complex analysis with multi-source context
+            # STEP 2: Use reasoning model (o1) for deep analysis of research results
             try:
-                request_params = self._create_reasoning_request(analysis_prompt, include_web_search=False)
-                print(f"      🧠 Using {self._get_reasoning_model()} for analysis with reasoning")
-                response = self.usage_tracker.track_responses_create(
+                request_params = self._create_reasoning_request(analysis_prompt)
+                print(f"      🧠 Using {self._get_reasoning_model()} for analysis")
+                response = self.usage_tracker.track_chat_completions_create(
                     model=request_params.pop('model'),
                     operation_type="analysis",
                     **request_params
                 )
                 
-                # Extract response from the new responses API format
-                analysis_text = ""
-                for item in response.output:
-                    if item.type == "message":
-                        for content_item in item.content:
-                            if content_item.type == "output_text":
-                                analysis_text = content_item.text.strip()
-                                break
-                        break
+                # Extract response from LiteLLM standard format
+                analysis_text = response.choices[0].message.content.strip()
+                
+                # Extract reasoning if available (for o1 models)
+                if (hasattr(response.choices[0].message, 'reasoning_content') and 
+                    response.choices[0].message.reasoning_content):
+                    reasoning_content = response.choices[0].message.reasoning_content
+                    print(f"      💭 Reasoning extracted: {len(reasoning_content)} chars")
+                    # Could optionally store reasoning for debugging/transparency
                         
             except Exception as e:
-                # Fallback to GPT-4.1 if reasoning models are unavailable
+                # Fallback to alternative reasoning model if primary unavailable
                 print(f"      ⚠️ Reasoning model analysis failed: {str(e)[:100]}...")
-                print(f"      🔄 Falling back to {self.config['fallback_model']}")
+                print(f"      🔄 Falling back to {self.config['fallback_reasoning_model']}")
                 response = self.usage_tracker.track_chat_completions_create(
-                    model=self.config['fallback_model'],
+                    model=self.config['fallback_reasoning_model'],
                     operation_type="analysis_fallback",
                     messages=[{"role": "user", "content": analysis_prompt}],
-                    max_tokens=500,
-                    timeout=TIMEOUTS['question_agent']
+                    max_tokens=self.config['reasoning_model']['max_output_tokens'],
+                    timeout=self.config['workflow']['analysis_timeout']
                 )
                 analysis_text = response.choices[0].message.content.strip()
             

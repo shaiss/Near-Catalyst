@@ -87,7 +87,7 @@ import time
 import concurrent.futures
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from openai import OpenAI
+import litellm
 
 # Import our modular components
 from agents import (
@@ -106,8 +106,8 @@ def setup_environment():
         print("❌ Error: OPENAI_API_KEY not found in .env file")
         sys.exit(1)
     
-    # Initialize OpenAI client
-    client = OpenAI(api_key=api_key)
+    # No OpenAI client needed - LiteLLM handles API calls directly
+    print(f"✅ Environment setup complete - using LiteLLM for API calls")
 
     # Load system prompt framework
     try:
@@ -118,7 +118,7 @@ def setup_environment():
         print("This file contains the partnership evaluation framework.")
         sys.exit(1)
     
-    return client, system_prompt
+    return system_prompt
 
 
 def fetch_full_project_details(project_slug):
@@ -318,7 +318,7 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
     
     # Initialize question agent with usage tracking
     db_manager = DatabaseManager(db_path)
-    question_agent = QuestionAgent(client, db_manager, usage_tracker)
+    question_agent = QuestionAgent(None, db_manager, usage_tracker)
     
     # Use ThreadPoolExecutor for parallel execution
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
@@ -413,11 +413,11 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         conn, cursor = db_manager.initialize_database()
         
         # Initialize usage tracking for this project analysis
-        usage_tracker = APIUsageTracker(client, db_manager)
+        usage_tracker = APIUsageTracker(None, db_manager)  # No client needed for LiteLLM
         
         # Step 1: General Research Agent
         print(f"  Running general research agent...")
-        research_agent = ResearchAgent(client, db_manager, usage_tracker)
+        research_agent = ResearchAgent(None, db_manager, usage_tracker)
         
         # Fetch full project details for research context
         catalog_data = fetch_full_project_details(slug)
@@ -442,7 +442,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         deep_research_result = None
         if args.deep_research and research_result["success"]:
             print(f"  🔬 Deep research requested...")
-            deep_research_agent = DeepResearchAgent(client, db_manager, usage_tracker)
+            deep_research_agent = DeepResearchAgent(None, db_manager, usage_tracker)
             
             # Check if deep research is enabled via config OR command line flag (flag overrides config)
             config_enabled = deep_research_agent.is_enabled()
@@ -496,7 +496,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
             return True
 
         # Step 3: Summary Agent
-        summary_agent = SummaryAgent(client, db_manager, usage_tracker)
+        summary_agent = SummaryAgent(None, db_manager, usage_tracker)
         summary_result = summary_agent.analyze(
             name, research_context, question_results, system_prompt, args.benchmark_format
         )
@@ -791,7 +791,7 @@ Database management:
         print(f"📊 Deep research: DISABLED (use --deep-research to enable)")
     
     # Setup environment
-    client, system_prompt = setup_environment()
+    system_prompt = setup_environment()
     
     # Fetch projects to analyze
     project_slugs = fetch_near_projects(limit)
@@ -810,7 +810,7 @@ Database management:
     print(f"Split into {total_batches} batches of {batch_size} projects each")
     
     batch_data = {
-        'client': client,
+        'client': None, # LiteLLM handles API calls directly, so no client object needed here
         'db_manager': db_manager,
         'system_prompt': system_prompt,
         'args': args

@@ -7,23 +7,26 @@ determining which partners can unlock developer potential and create exponential
 """
 
 import json
+import litellm
 from config.config import DIAGNOSTIC_QUESTIONS, TIMEOUTS, SCORE_THRESHOLDS, RECOMMENDATIONS, load_partnership_benchmarks
+from database.usage_tracker import APIUsageTracker
+from database.database_manager import DatabaseManager
 from typing import List, Dict
 
 
 class SummaryAgent:
     """
-    Agent 8: Summary agent that synthesizes all question analyses into final recommendation.
+    Agent 8: Summary agent that synthesizes all question analyses into final recommendation
+    with cost tracking via LiteLLM.
     """
     
-    def __init__(self, client, db_manager=None, usage_tracker=None):
-        """Initialize the summary agent with OpenAI client and usage tracking."""
-        self.client = client
+    def __init__(self, client=None, db_manager=None, usage_tracker=None):
+        """Initialize the summary agent with usage tracking."""
         self.timeout = TIMEOUTS['summary_agent']
         
-        # Usage tracking support (can be added later)
-        self.db_manager = db_manager
-        self.usage_tracker = usage_tracker
+        # Initialize usage tracking
+        self.db_manager = db_manager or DatabaseManager()
+        self.usage_tracker = usage_tracker or APIUsageTracker(None, self.db_manager)
     
     def analyze(self, project_name: str, general_research: str, question_analyses: List[Dict], system_prompt: str, benchmark_format: str = 'auto') -> Dict:
         """
@@ -49,29 +52,25 @@ class SummaryAgent:
         
         Args:
             project_name: Name of the project being evaluated
-            general_research: Research findings from research agent (may be deep research if available)
-            question_analyses: List of question analysis results
-            benchmark_format: Format preference for benchmark data
+            general_research: General research data or deep research if available
+            question_analyses: List of individual question analysis results
+            benchmark_format: Format preference for benchmark examples
             
         Returns:
-            Dictionary containing final catalyst assessment and recommendation
+            Dictionary containing synthesis results with scoring and recommendation
         """
+        # Set context for usage tracking
+        self.usage_tracker.set_context(project_name, "summary_agent")
+        
         try:
-            # Load benchmarks with specified format
+            # Load benchmarks in the specified format
             benchmarks = load_partnership_benchmarks(benchmark_format)
             
-            # Calculate total score
-            total_score = sum([result.get("score", 0) for result in question_analyses])
+            # Calculate total score from question analyses
+            total_score = sum(q.get('score', 0) for q in question_analyses)
             
-            # Check for analysis quality issues
-            empty_analyses = [q for q in question_analyses if not q.get("analysis") or q.get("analysis", "").strip() == ""]
-            if empty_analyses:
-                print(f"  ⚠️  WARNING: {len(empty_analyses)} question(s) have empty analysis:")
-                for q in empty_analyses:
-                    print(f"      Q{q.get('question_id', '?')}: Empty analysis detected")
-            
-            # Generate recommendation based on score thresholds
-            recommendation = self._generate_recommendation(total_score)
+            # Determine recommendation based on scoring framework
+            recommendation = self._determine_recommendation(total_score)
             
             # Create synthesis prompt
             synthesis_prompt = self._create_synthesis_prompt(
@@ -79,10 +78,11 @@ class SummaryAgent:
                 total_score, recommendation, benchmarks
             )
             
-            # Get LLM synthesis using GPT-4.1 as required
+            # Get LLM synthesis using GPT-4.1 with usage tracking
             print(f"  📊 Generating final summary with GPT-4.1...")
-            response = self.client.chat.completions.create(
-                model="gpt-4.1",  # CRITICAL: Use GPT-4.1 as required in memory
+            response = self.usage_tracker.track_chat_completions_create(
+                model="gpt-4.1",
+                operation_type="synthesis",
                 messages=[
                     {"role": "system", "content": "You are a NEAR Partnership Analysis expert synthesizing hackathon catalyst evaluations."},
                     {"role": "user", "content": synthesis_prompt}
@@ -100,23 +100,32 @@ class SummaryAgent:
             print(f"  ✅ Final summary generated: {total_score}/6 score, {recommendation}")
             
             return {
-                "summary": summary_text,
+                "project_name": project_name,
                 "total_score": total_score,
                 "recommendation": recommendation,
+                "summary": summary_text,
+                "question_scores": {f"Q{q.get('question_id', i+1)}": q.get('score', 0) for i, q in enumerate(question_analyses)},
                 "success": True
             }
             
         except Exception as e:
-            print(f"  ❌ ERROR: Summary synthesis failed - {str(e)}")
+            print(f"      ❌ Summary generation failed: {str(e)}")
+            
+            # Calculate fallback score from available data
+            fallback_score = sum(q.get('score', 0) for q in question_analyses)
+            fallback_recommendation = self._determine_recommendation(fallback_score)
+            
             return {
-                "summary": f"Synthesis failed: {str(e)}",
-                "total_score": 0,
-                "recommendation": "Analysis incomplete",
+                "project_name": project_name,
+                "total_score": fallback_score,
+                "recommendation": fallback_recommendation,
+                "summary": f"Summary generation failed: {str(e)}. Score based on individual analyses: {fallback_score}/6",
+                "question_scores": {f"Q{q.get('question_id', i+1)}": q.get('score', 0) for i, q in enumerate(question_analyses)},
                 "success": False,
                 "error": str(e)
             }
     
-    def _generate_recommendation(self, total_score):
+    def _determine_recommendation(self, total_score):
         """Generate recommendation based on score thresholds."""
         if total_score >= SCORE_THRESHOLDS['strong_candidate']:
             return RECOMMENDATIONS['strong_candidate']

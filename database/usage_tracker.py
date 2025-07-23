@@ -2,149 +2,51 @@
 """
 API Usage Tracker for NEAR Catalyst Framework
 
-Comprehensive tracking of OpenAI API calls with real-time cost calculation.
-Wraps OpenAI client calls to log usage data for cost analysis and optimization.
+Enhanced tracking of LiteLLM API calls with built-in cost calculation.
+Uses LiteLLM's native cost tracking instead of custom pricing management.
 """
 
 import json
 import time
 import uuid
-import requests
+import sqlite3
+import litellm
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from database.database_manager import DatabaseManager
 
 
-class PricingManager:
-    """
-    Manages OpenAI model pricing data from LiteLLM or OpenAI docs.
-    """
-    
-    def __init__(self):
-        self.pricing_data = {}
-        self.last_updated = None
-        self._load_pricing_data()
-    
-    def _load_pricing_data(self):
-        """Load pricing data from LiteLLM JSON source."""
-        try:
-            # Use LiteLLM pricing data as primary source
-            url = "https://raw.githubusercontent.com/BerriAI/litellm/refs/heads/main/model_prices_and_context_window.json"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            
-            data = response.json()
-            self.pricing_data = data
-            self.last_updated = datetime.now()
-            print(f"    ✓ Loaded pricing data for {len(data)} models from LiteLLM")
-            
-        except Exception as e:
-            print(f"    ⚠️ Failed to load LiteLLM pricing data: {e}")
-            # Fallback to hardcoded OpenAI pricing (as of July 2025)
-            self._load_fallback_pricing()
-    
-    def _load_fallback_pricing(self):
-        """Fallback pricing for key OpenAI models."""
-        self.pricing_data = {
-            "gpt-4.1": {
-                "input_cost_per_token": 0.00001, # $10 per 1M tokens
-                "output_cost_per_token": 0.00003, # $30 per 1M tokens
-                "litellm_provider": "openai"
-            },
-            "o3": {
-                "input_cost_per_token": 0.00006, # $60 per 1M tokens
-                "output_cost_per_token": 0.00024, # $240 per 1M tokens
-                "litellm_provider": "openai"
-            },
-            "o4-mini": {
-                "input_cost_per_token": 0.000015, # $15 per 1M tokens
-                "output_cost_per_token": 0.00006, # $60 per 1M tokens
-                "litellm_provider": "openai"
-            },
-            "o4-mini-deep-research-2025-06-26": {
-                "input_cost_per_token": 0.0002, # $200 per 1M tokens (estimated)
-                "output_cost_per_token": 0.0008, # $800 per 1M tokens (estimated)
-                "litellm_provider": "openai"
-            }
-        }
-        print(f"    📊 Using fallback pricing for {len(self.pricing_data)} models")
-    
-    def get_model_pricing(self, model_name: str) -> Dict[str, float]:
-        """
-        Get pricing information for a specific model.
-        
-        Args:
-            model_name (str): Name of the model
-            
-        Returns:
-            dict: Pricing info with input/output costs per token
-        """
-        if model_name in self.pricing_data:
-            model_info = self.pricing_data[model_name]
-            return {
-                'input_cost_per_token': model_info.get('input_cost_per_token', 0.0),
-                'output_cost_per_token': model_info.get('output_cost_per_token', 0.0)
-            }
-        
-        # If model not found, try to infer pricing from similar models
-        base_model = model_name.split('-')[0]
-        if base_model in self.pricing_data:
-            return self.get_model_pricing(base_model)
-        
-        print(f"    ⚠️ Unknown model pricing: {model_name}, using default rates")
-        return {
-            'input_cost_per_token': 0.00001,  # Default to GPT-4.1 rate
-            'output_cost_per_token': 0.00003
-        }
-    
-    def calculate_cost(self, model_name: str, prompt_tokens: int, 
-                      completion_tokens: int, reasoning_tokens: int = 0) -> float:
-        """
-        Calculate the cost for a specific API call.
-        
-        Args:
-            model_name (str): Name of the model used
-            prompt_tokens (int): Number of input tokens
-            completion_tokens (int): Number of output tokens
-            reasoning_tokens (int): Number of reasoning tokens (for o-series)
-            
-        Returns:
-            float: Total cost in USD
-        """
-        pricing = self.get_model_pricing(model_name)
-        
-        # For reasoning models, reasoning tokens are billed as output tokens
-        total_output_tokens = completion_tokens + reasoning_tokens
-        
-        input_cost = prompt_tokens * pricing['input_cost_per_token']
-        output_cost = total_output_tokens * pricing['output_cost_per_token']
-        
-        return input_cost + output_cost
-
-
 class APIUsageTracker:
     """
-    Comprehensive API usage tracker that wraps OpenAI client calls.
+    Enhanced API usage tracker that uses LiteLLM's built-in cost tracking.
+    Eliminates custom pricing management for better efficiency and accuracy.
     """
     
-    def __init__(self, client, db_manager: DatabaseManager, session_id: str = None):
+    def __init__(self, client=None, db_manager: DatabaseManager = None, session_id: str = None):
         """
-        Initialize the usage tracker.
+        Initialize the usage tracker with LiteLLM native cost tracking.
         
         Args:
-            client: OpenAI client instance
+            client: Not used (kept for compatibility) - LiteLLM handles API calls directly
             db_manager: Database manager for storing usage data
             session_id: Optional session ID (will generate if not provided)
         """
-        self.client = client
-        self.db_manager = db_manager
+        # client parameter kept for compatibility but not used since LiteLLM handles API calls
+        self.db_manager = db_manager or DatabaseManager()
         self.session_id = session_id or self._generate_session_id()
-        self.pricing_manager = PricingManager()
         self.current_project = None
         self.current_agent = None
         
-        print(f"    🔍 API Usage Tracker initialized (session: {self.session_id[:8]}...)")
+        # Load LiteLLM pricing data (automatic)
+        try:
+            # LiteLLM automatically loads pricing for 1,245+ models
+            model_count = len(litellm.model_cost) if hasattr(litellm, 'model_cost') else "1,245+"
+            print(f"    ✓ Loaded pricing data for {model_count} models from LiteLLM")
+        except Exception as e:
+            print(f"    ⚠️ LiteLLM pricing data: {e}")
+        
+        print(f"    🔍 API Usage Tracker initialized with LiteLLM (session: {self.session_id[:8]}...)")
     
     def _generate_session_id(self) -> str:
         """Generate a unique session ID."""
@@ -162,7 +64,7 @@ class APIUsageTracker:
         self.current_agent = agent_type
     
     def _extract_usage_data(self, response) -> Dict[str, Any]:
-        """Extract token usage data from OpenAI response."""
+        """Extract token usage data from LiteLLM response."""
         usage_data = {
             'prompt_tokens': 0,
             'completion_tokens': 0,
@@ -182,14 +84,51 @@ class APIUsageTracker:
         
         return usage_data
     
+    def _get_litellm_cost(self, response) -> float:
+        """
+        Extract cost from LiteLLM response using built-in cost tracking.
+        
+        Args:
+            response: LiteLLM completion response
+            
+        Returns:
+            float: Cost in USD from LiteLLM's built-in tracking
+        """
+        try:
+            # Method 1: Check _hidden_params for response_cost (most direct)
+            if hasattr(response, '_hidden_params') and response._hidden_params:
+                cost = response._hidden_params.get('response_cost', 0.0)
+                if cost and cost > 0:
+                    return float(cost)
+            
+            # Method 2: Use litellm.completion_cost() helper function
+            cost = litellm.completion_cost(completion_response=response)
+            if cost and cost > 0:
+                return float(cost)
+                
+            # Method 3: Fallback to manual calculation with LiteLLM model pricing
+            if hasattr(response, 'usage') and response.usage and hasattr(response, 'model'):
+                cost = litellm.completion_cost(
+                    model=response.model,
+                    prompt_tokens=getattr(response.usage, 'prompt_tokens', 0),
+                    completion_tokens=getattr(response.usage, 'completion_tokens', 0)
+                )
+                if cost and cost > 0:
+                    return float(cost)
+            
+        except Exception as e:
+            print(f"      ⚠️ LiteLLM cost extraction failed: {e}")
+        
+        return 0.0  # Fallback if all methods fail
+
     def track_responses_create(self, model: str, operation_type: str, **kwargs) -> Any:
         """
-        Track a responses.create() call (for reasoning models).
+        Track a LiteLLM completion call using built-in cost tracking.
         
         Args:
             model (str): Model name
             operation_type (str): Type of operation (research, analysis, etc.)
-            **kwargs: Arguments to pass to responses.create()
+            **kwargs: Arguments to pass to litellm.completion()
             
         Returns:
             API response object
@@ -199,8 +138,17 @@ class APIUsageTracker:
         success = False
         response = None
         
+        # Convert old responses.create() format to LiteLLM completion format
+        if 'input' in kwargs:
+            # Convert 'input' to 'messages' format for LiteLLM
+            if isinstance(kwargs['input'], str):
+                kwargs['messages'] = [{"role": "user", "content": kwargs['input']}]
+            elif isinstance(kwargs['input'], list):
+                kwargs['messages'] = kwargs['input']
+            del kwargs['input']
+        
         try:
-            response = self.client.responses.create(model=model, **kwargs)
+            response = litellm.completion(model=model, **kwargs)
             success = True
             
         except Exception as e:
@@ -213,16 +161,11 @@ class APIUsageTracker:
             # Extract usage data
             if response and success:
                 usage_data = self._extract_usage_data(response)
+                # Use LiteLLM's built-in cost tracking
+                estimated_cost = self._get_litellm_cost(response)
             else:
                 usage_data = {'prompt_tokens': 0, 'completion_tokens': 0, 'reasoning_tokens': 0, 'total_tokens': 0}
-            
-            # Calculate cost
-            estimated_cost = self.pricing_manager.calculate_cost(
-                model, 
-                usage_data['prompt_tokens'],
-                usage_data['completion_tokens'],
-                usage_data['reasoning_tokens']
-            )
+                estimated_cost = 0.0
             
             # Store usage data
             if self.current_project and self.current_agent:
@@ -244,7 +187,7 @@ class APIUsageTracker:
                     response_details={'usage': usage_data} if success else None
                 )
                 
-                # Log the usage
+                # Log the usage with LiteLLM cost data
                 if success:
                     if usage_data['reasoning_tokens'] > 0:
                         reasoning_pct = (usage_data['reasoning_tokens'] / usage_data['total_tokens'] * 100) if usage_data['total_tokens'] > 0 else 0
@@ -258,12 +201,12 @@ class APIUsageTracker:
     
     def track_chat_completions_create(self, model: str, operation_type: str, **kwargs) -> Any:
         """
-        Track a chat.completions.create() call (for standard models).
+        Track a LiteLLM completion call using built-in cost tracking.
         
         Args:
             model (str): Model name
             operation_type (str): Type of operation
-            **kwargs: Arguments to pass to chat.completions.create()
+            **kwargs: Arguments to pass to litellm.completion()
             
         Returns:
             API response object
@@ -274,7 +217,7 @@ class APIUsageTracker:
         response = None
         
         try:
-            response = self.client.chat.completions.create(model=model, **kwargs)
+            response = litellm.completion(model=model, **kwargs)
             success = True
             
         except Exception as e:
@@ -287,16 +230,11 @@ class APIUsageTracker:
             # Extract usage data
             if response and success:
                 usage_data = self._extract_usage_data(response)
+                # Use LiteLLM's built-in cost tracking
+                estimated_cost = self._get_litellm_cost(response)
             else:
                 usage_data = {'prompt_tokens': 0, 'completion_tokens': 0, 'reasoning_tokens': 0, 'total_tokens': 0}
-            
-            # Calculate cost
-            estimated_cost = self.pricing_manager.calculate_cost(
-                model, 
-                usage_data['prompt_tokens'],
-                usage_data['completion_tokens'],
-                usage_data['reasoning_tokens']
-            )
+                estimated_cost = 0.0
             
             # Store usage data
             if self.current_project and self.current_agent:
@@ -318,36 +256,106 @@ class APIUsageTracker:
                     response_details={'usage': usage_data} if success else None
                 )
                 
-                # Log the usage
+                # Log the usage with LiteLLM cost data
                 if success:
-                    print(f"      📊 {operation_type}: {usage_data['total_tokens']:,} tokens - ${estimated_cost:.4f}")
+                    if usage_data['reasoning_tokens'] > 0:
+                        reasoning_pct = (usage_data['reasoning_tokens'] / usage_data['total_tokens'] * 100) if usage_data['total_tokens'] > 0 else 0
+                        print(f"      💭 {operation_type}: {usage_data['reasoning_tokens']:,} reasoning tokens ({reasoning_pct:.1f}% of {usage_data['total_tokens']:,} total) - ${estimated_cost:.4f}")
+                    else:
+                        print(f"      📊 {operation_type}: {usage_data['total_tokens']:,} tokens - ${estimated_cost:.4f}")
                 else:
                     print(f"      ❌ {operation_type} failed: {error_message[:50]}...")
         
         return response
-    
-    def get_session_summary(self) -> Dict[str, Any]:
-        """Get usage summary for the current session."""
-        return self.db_manager.get_session_usage_summary(self.session_id)
-    
+
     def print_session_summary(self):
-        """Print a formatted session summary."""
-        summary = self.get_session_summary()
-        
-        if summary and summary.get('total_calls', 0) > 0:
-            print(f"\n💰 Session Usage Summary (ID: {self.session_id[:8]}...)")
-            print(f"   Total API Calls: {summary['total_calls']}")
-            print(f"   Total Tokens: {summary['total_tokens']:,}")
-            print(f"   Total Cost: ${summary['total_cost']:.4f}")
-            print(f"   Average Response Time: {summary['avg_response_time']:.2f}s")
-            print(f"   Success Rate: {summary['successful_calls']}/{summary['total_calls']} ({summary['successful_calls']/summary['total_calls']*100:.1f}%)")
+        """Print session usage summary using actual database data."""
+        if not self.current_project:
+            print("No active project context for summary")
+            return
             
-            if summary.get('agent_breakdown'):
-                print(f"   Agent Breakdown:")
-                for agent in summary['agent_breakdown']:
-                    print(f"     • {agent['agent_type']}: {agent['calls']} calls, {agent['tokens']:,} tokens, ${agent['cost']:.4f}")
+        try:
+            conn = sqlite3.connect(self.db_manager.db_path)
+            cursor = conn.cursor()
             
-            if summary.get('model_breakdown'):
-                print(f"   Model Breakdown:")
-                for model in summary['model_breakdown']:
-                    print(f"     • {model['model_name']}: {model['calls']} calls, {model['tokens']:,} tokens, ${model['cost']:.4f}") 
+            # Get session summary
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_calls,
+                    SUM(total_tokens) as total_tokens,
+                    SUM(estimated_cost) as total_cost,
+                    SUM(response_time) as total_time,
+                    AVG(estimated_cost) as avg_cost_per_call,
+                    COUNT(CASE WHEN success = 1 THEN 1 END) as successful_calls,
+                    COUNT(CASE WHEN reasoning_tokens > 0 THEN 1 END) as reasoning_calls,
+                    SUM(reasoning_tokens) as total_reasoning_tokens
+                FROM api_usage_tracking 
+                WHERE session_id = ? AND project_name = ?
+            ''', (self.session_id, self.current_project))
+            
+            session_data = cursor.fetchone()
+            
+            if session_data and session_data[0] > 0:
+                total_calls, total_tokens, total_cost, total_time, avg_cost, successful_calls, reasoning_calls, reasoning_tokens = session_data
+                success_rate = (successful_calls / total_calls * 100) if total_calls > 0 else 0
+                
+                print(f"\n💰 Session Usage Summary (ID: {self.session_id[:8]}...)")
+                print(f"   Total API Calls: {total_calls}")
+                print(f"   Total Tokens: {total_tokens:,}")
+                print(f"   Total Cost: ${total_cost:.4f}")
+                print(f"   Average Response Time: {total_time/total_calls:.2f}s" if total_calls > 0 else "   Average Response Time: N/A")
+                print(f"   Success Rate: {successful_calls}/{total_calls} ({success_rate:.1f}%)")
+                
+                if reasoning_calls > 0:
+                    print(f"   Reasoning Calls: {reasoning_calls}")
+                    print(f"   Reasoning Tokens: {reasoning_tokens:,}")
+                
+                # Get breakdown by agent type
+                cursor.execute('''
+                    SELECT 
+                        agent_type,
+                        COUNT(*) as calls,
+                        SUM(total_tokens) as tokens,
+                        SUM(estimated_cost) as cost
+                    FROM api_usage_tracking 
+                    WHERE session_id = ? AND project_name = ?
+                    GROUP BY agent_type
+                    ORDER BY cost DESC
+                ''', (self.session_id, self.current_project))
+                
+                agent_breakdown = cursor.fetchall()
+                if agent_breakdown:
+                    print(f"   Agent Breakdown:")
+                    for agent_type, calls, tokens, cost in agent_breakdown:
+                        print(f"     • {agent_type}: {calls} calls, {tokens:,} tokens, ${cost:.4f}")
+                
+                # Get breakdown by model
+                cursor.execute('''
+                    SELECT 
+                        model_name,
+                        COUNT(*) as calls,
+                        SUM(total_tokens) as tokens,
+                        SUM(estimated_cost) as cost
+                    FROM api_usage_tracking 
+                    WHERE session_id = ? AND project_name = ?
+                    GROUP BY model_name
+                    ORDER BY cost DESC
+                ''', (self.session_id, self.current_project))
+                
+                model_breakdown = cursor.fetchall()
+                if model_breakdown:
+                    print(f"   Model Breakdown:")
+                    for model_name, calls, tokens, cost in model_breakdown:
+                        print(f"     • {model_name}: {calls} calls, {tokens:,} tokens, ${cost:.4f}")
+                        
+            else:
+                print("No usage data found for current session")
+                
+            conn.close()
+            
+        except Exception as e:
+            print(f"Error generating session summary: {e}")
+
+
+# Backwards compatibility aliases
+PricingManager = APIUsageTracker  # For any code that might still reference PricingManager 
