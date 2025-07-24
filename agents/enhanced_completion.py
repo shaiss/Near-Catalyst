@@ -91,13 +91,18 @@ class EnhancedCompletion:
             local_model = self.config['model_mapping'][model]
             
             # Step 3: Route through LiteLLM to LM Studio API (local or remote)
-            response = litellm.completion(
-                model=f"lm_studio/{local_model}",  # LiteLLM LM Studio provider format
-                messages=messages,
-                api_base=self.endpoint_config['url'],
-                api_key=self.endpoint_config['api_key'],
+            completion_params = {
+                'model': f"lm_studio/{local_model}",  # LiteLLM LM Studio provider format
+                'messages': messages,
+                'api_base': self.endpoint_config['url'],
                 **kwargs
-            )
+            }
+            
+            # Only add API key if one is provided (LM Studio often doesn't need auth)
+            if self.endpoint_config['api_key']:
+                completion_params['api_key'] = self.endpoint_config['api_key']
+            
+            response = litellm.completion(**completion_params)
             
             # Add local model metadata to response
             if hasattr(response, '_hidden_params'):

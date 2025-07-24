@@ -190,11 +190,11 @@ LITELLM_CONFIG = {
     # LM Studio Server Configuration (Local vs Remote)
     'use_remote_lmstudio': os.getenv('USE_REMOTE_LMSTUDIO', 'false').lower() == 'true',
     'lm_studio_base_url': os.getenv('LM_STUDIO_API_BASE', 'http://localhost:1234/v1'),
-    'lm_studio_api_key': os.getenv('LM_STUDIO_API_KEY', 'local-key'),
+    'lm_studio_api_key': os.getenv('LM_STUDIO_API_KEY', ''),  # Usually not needed
     
     # Remote LM Studio Configuration (when USE_REMOTE_LMSTUDIO=true)
     'remote_lmstudio_url': os.getenv('REMOTE_LMSTUDIO_URL', 'http://your-server:1234/v1'),
-    'remote_lmstudio_api_key': os.getenv('REMOTE_LMSTUDIO_API_KEY', 'your-remote-key'),
+    'remote_lmstudio_api_key': os.getenv('REMOTE_LMSTUDIO_API_KEY', ''),  # Usually not needed
     
     # Phase 2: OpenAI → Local OSS Model Mapping
     'model_mapping': {

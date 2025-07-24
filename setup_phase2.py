@@ -198,7 +198,9 @@ DEBUG=False
         # Test connection to remote server
         try:
             test_url = remote_url.replace('/v1', '/v1/models')
-            headers = {'Authorization': f'Bearer {remote_key}'} if remote_key != 'local-key' else {}
+            headers = {}
+            if remote_key and remote_key not in ['local-key', 'your-remote-key', '']:
+                headers['Authorization'] = f'Bearer {remote_key}'
             
             response = requests.get(test_url, headers=headers, timeout=10)
             if response.status_code == 200:

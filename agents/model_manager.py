@@ -157,9 +157,13 @@ class LMStudioModelManager:
             loop = asyncio.get_event_loop()
             
             def check_server():
+                headers = {}
+                if self.endpoint_config['api_key']:
+                    headers['Authorization'] = f"Bearer {self.endpoint_config['api_key']}"
+                
                 response = requests.get(
                     f"{self.endpoint_config['url'].rstrip('/v1')}/v1/models",
-                    headers={'Authorization': f"Bearer {self.endpoint_config['api_key']}"},
+                    headers=headers,
                     timeout=10
                 )
                 return response.status_code == 200, response.json() if response.status_code == 200 else None
@@ -232,9 +236,13 @@ class LMStudioModelManager:
                 loop = asyncio.get_event_loop()
                 
                 def get_remote_models():
+                    headers = {}
+                    if self.endpoint_config['api_key']:
+                        headers['Authorization'] = f"Bearer {self.endpoint_config['api_key']}"
+                        
                     response = requests.get(
                         f"{self.endpoint_config['url'].rstrip('/v1')}/v1/models",
-                        headers={'Authorization': f"Bearer {self.endpoint_config['api_key']}"},
+                        headers=headers,
                         timeout=10
                     )
                     if response.status_code == 200:
