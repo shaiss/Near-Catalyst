@@ -89,13 +89,60 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import litellm
 
+# Import usage tracker for local model tracking
+from database.usage_tracker import APIUsageTracker
+
+# Set up LiteLLM cost tracking
+class CostTracker:
+    """Simple cost tracker using LiteLLM's built-in cost calculation"""
+    
+    def __init__(self):
+        self.total_cost = 0.0
+        self.call_count = 0
+        self.model_usage = {}
+        self.session_start = time.time()
+    
+    def track_completion(self, response):
+        """Track a completion response"""
+        if hasattr(response, '_hidden_params'):
+            cost = response._hidden_params.get('response_cost', 0.0)
+            model = response._hidden_params.get('litellm_model_name', 'unknown')
+            
+            self.total_cost += cost
+            self.call_count += 1
+            
+            if model not in self.model_usage:
+                self.model_usage[model] = {'calls': 0, 'cost': 0.0}
+            
+            self.model_usage[model]['calls'] += 1
+            self.model_usage[model]['cost'] += cost
+    
+    def print_session_summary(self, project_name=None):
+        """Print session cost summary"""
+        session_time = time.time() - self.session_start
+        
+        if project_name:
+            print(f"\n💰 Cost Summary for {project_name}:")
+        else:
+            print(f"\n💰 Session Cost Summary:")
+        print(f"   Total Cost: ${self.total_cost:.4f}")
+        print(f"   API Calls: {self.call_count}")
+        print(f"   Session Time: {session_time:.1f}s")
+        
+        if self.model_usage:
+            print("   Model Breakdown:")
+            for model, stats in self.model_usage.items():
+                print(f"     {model}: {stats['calls']} calls, ${stats['cost']:.4f}")
+
+# Global cost tracker
+cost_tracker = CostTracker()
+
 # Import our modular components
 from agents import (
     ResearchAgent, QuestionAgent, SummaryAgent, DeepResearchAgent,
     DIAGNOSTIC_QUESTIONS, NEAR_CATALOG_API, BATCH_PROCESSING_CONFIG, DEEP_RESEARCH_CONFIG
 )
 from database import DatabaseManager
-from database.usage_tracker import APIUsageTracker
 
 
 def setup_environment():
@@ -106,8 +153,8 @@ def setup_environment():
         print("❌ Error: OPENAI_API_KEY not found in .env file")
         sys.exit(1)
     
-    # No OpenAI client needed - LiteLLM handles API calls directly
-    print(f"✅ Environment setup complete - using LiteLLM for API calls")
+    # Set up LiteLLM for native cost tracking
+    print(f"✅ Environment setup complete - using LiteLLM with built-in cost tracking")
 
     # Load system prompt framework
     try:
@@ -297,17 +344,16 @@ def should_skip_project(db_manager, project_name, force_refresh):
             conn.close()
 
 
-def run_parallel_question_analysis(client, project_name, general_research, db_path, benchmark_format='auto', usage_tracker=None):
+def run_parallel_question_analysis(project_name, general_research, db_path, benchmark_format='auto', provider='openai'):
     """
     Execute all 6 question agents in parallel for maximum efficiency.
     
     Args:
-        client (OpenAI): OpenAI client instance
         project_name (str): Name of the project
         general_research (str): General research context
         db_path (str): Path to SQLite database
         benchmark_format (str): Benchmark format preference
-        usage_tracker (APIUsageTracker): Optional usage tracker for cost monitoring
+        provider (str): AI provider ('openai' or 'local')
         
     Returns:
         list: Results from all question agents, sorted by question ID
@@ -316,9 +362,10 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
     question_results = []
     start_time = time.time()
     
-    # Initialize question agent with usage tracking
+    # Initialize question agent with provider-specific configuration and usage tracking
     db_manager = DatabaseManager(db_path)
-    question_agent = QuestionAgent(None, db_manager, usage_tracker)
+    usage_tracker = APIUsageTracker(db_manager=db_manager)
+    question_agent = QuestionAgent(db_manager, usage_tracker, provider=provider)
     
     # Use ThreadPoolExecutor for parallel execution
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
@@ -382,12 +429,11 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
     return question_results
 
 
-def analyze_single_project(client, db_manager, project_data, system_prompt, args):
+def analyze_single_project(db_manager, project_data, system_prompt, args):
     """
     Analyze a single project using the multi-agent system.
     
     Args:
-        client (OpenAI): OpenAI client instance
         db_manager (DatabaseManager): Database manager
         project_data (dict): Project information from NEAR Catalog
         system_prompt (str): System prompt for LLM
@@ -413,11 +459,11 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         conn, cursor = db_manager.initialize_database()
         
         # Initialize usage tracking for this project analysis
-        usage_tracker = APIUsageTracker(None, db_manager)  # No client needed for LiteLLM
+        # LiteLLM handles cost tracking internally
         
         # Step 1: General Research Agent
         print(f"  Running general research agent...")
-        research_agent = ResearchAgent(None, db_manager, usage_tracker)
+        research_agent = ResearchAgent(db_manager, provider=args.provider)
         
         # Fetch full project details for research context
         catalog_data = fetch_full_project_details(slug)
@@ -428,6 +474,10 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
             db_manager.store_catalog_data(name, slug, catalog_data)
         
         research_result = research_agent.analyze(name, enriched_context)
+        
+        # Track research cost if available
+        if research_result.get("cost"):
+            print(f"      💰 Research cost: ${research_result['cost']:.4f}")
         
         # Store general research
         cursor.execute('''INSERT OR REPLACE INTO project_research 
@@ -442,7 +492,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
         deep_research_result = None
         if args.deep_research and research_result["success"]:
             print(f"  🔬 Deep research requested...")
-            deep_research_agent = DeepResearchAgent(None, db_manager, usage_tracker)
+            deep_research_agent = DeepResearchAgent(db_manager)
             
             # Check if deep research is enabled via config OR command line flag (flag overrides config)
             config_enabled = deep_research_agent.is_enabled()
@@ -468,12 +518,16 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
                 
                 deep_research_result = deep_research_agent.analyze(name, research_result["content"])
                 
+                # Track deep research cost if available
+                if deep_research_result.get("cost"):
+                    print(f"      💰 Deep research cost: ${deep_research_result['cost']:.4f}")
+                
                 # Store deep research results
                 db_manager.store_deep_research_data(name, slug, deep_research_result)
                 
                 if deep_research_result["success"]:
                     print(f"  ✓ Deep research completed ({deep_research_result.get('tool_calls_made', 0)} tool calls)")
-        
+
         if args.research_only:
             print(f"  ✓ General research completed and stored")
             if args.deep_research and deep_research_result:
@@ -488,24 +542,33 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
             print(f"  📊 Using deep research data for question analysis")
         
         question_results = run_parallel_question_analysis(
-            client, name, research_context, db_manager.db_path, args.benchmark_format, usage_tracker
+            name, research_context, db_manager.db_path, args.benchmark_format, args.provider
         )
+        
+        # Track question analysis costs
+        total_question_cost = sum(q.get('cost', 0.0) for q in question_results)
+        if total_question_cost > 0:
+            print(f"      💰 Total question analysis cost: ${total_question_cost:.4f}")
         
         if args.questions_only:
             print(f"  ✓ Question analyses completed and stored")
             return True
 
         # Step 3: Summary Agent
-        summary_agent = SummaryAgent(None, db_manager, usage_tracker)
+        summary_agent = SummaryAgent(db_manager, provider=args.provider)
         summary_result = summary_agent.analyze(
             name, research_context, question_results, system_prompt, args.benchmark_format
         )
+        
+        # Track summary cost if available
+        if summary_result.get("cost"):
+            print(f"      💰 Summary cost: ${summary_result['cost']:.4f}")
         
         # Store final summary
         cursor.execute('''INSERT OR REPLACE INTO final_summaries 
                          (project_name, slug, summary, total_score, recommendation, success, error, created_at, updated_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                      (name, slug, summary_result["summary"], summary_result["total_score"], 
+                      (name, slug, summary_result["content"], summary_result["total_score"], 
                        summary_result["recommendation"], summary_result["success"], 
                        summary_result.get("error"), datetime.now().isoformat(), datetime.now().isoformat()))
         conn.commit()
@@ -515,8 +578,16 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
             score_info += " (with deep research)"
         print(f"  ✓ Complete analysis stored. {score_info}")
         
-        # Print usage summary for this project
-        usage_tracker.print_session_summary()
+        # Print total cost summary for this project
+        total_project_cost = (
+            research_result.get("cost", 0.0) + 
+            (deep_research_result.get("cost", 0.0) if deep_research_result else 0.0) +
+            total_question_cost +
+            summary_result.get("cost", 0.0)
+        )
+        
+        if total_project_cost > 0:
+            print(f"  💰 Total project cost: ${total_project_cost:.4f}")
         
         return True
         
@@ -533,14 +604,13 @@ def process_project_batch(batch_data, batch_num, total_batches):
     Process a batch of projects concurrently.
     
     Args:
-        batch_data (dict): Contains client, db_manager, project_slugs, system_prompt, args
+        batch_data (dict): Contains db_manager, project_slugs, system_prompt, args
         batch_num (int): Current batch number
         total_batches (int): Total number of batches
         
     Returns:
         tuple: (successful_count, total_count)
     """
-    client = batch_data['client']
     db_manager = batch_data['db_manager']
     project_slugs = batch_data['project_slugs']
     system_prompt = batch_data['system_prompt']
@@ -548,7 +618,7 @@ def process_project_batch(batch_data, batch_num, total_batches):
     
     # Track deep research override status for the completion summary
     if args.deep_research and not hasattr(args, '_deep_research_was_overridden'):
-        deep_research_agent_temp = DeepResearchAgent(None)
+        deep_research_agent_temp = DeepResearchAgent()
         args._deep_research_was_overridden = not deep_research_agent_temp.is_enabled()
     
     print(f"\n📦 Processing batch {batch_num}/{total_batches} ({len(project_slugs)} projects)")
@@ -572,7 +642,7 @@ def process_project_batch(batch_data, batch_num, total_batches):
             
             # Analyze the project
             project_data = {'slug': slug, 'detail': detail}
-            return analyze_single_project(client, db_manager, project_data, system_prompt, args)
+            return analyze_single_project(db_manager, project_data, system_prompt, args)
             
         except Exception as e:
             print(f"  ERROR: Failed to process {slug}: {e}")
@@ -646,8 +716,9 @@ def main():
         epilog="""
 Examples:
   python analyze_projects_multi_agent_v2.py --limit 5
-  python analyze_projects_multi_agent_v2.py --research-only --limit 10
-  python analyze_projects_multi_agent_v2.py --force-refresh --threads 3
+  python analyze_projects_multi_agent_v2.py --provider local --limit 3
+  python analyze_projects_multi_agent_v2.py --provider openai --research-only --limit 10
+  python analyze_projects_multi_agent_v2.py --provider local --force-refresh --threads 3
   python analyze_projects_multi_agent_v2.py --threads 8 --limit 50
   python analyze_projects_multi_agent_v2.py --deep-research --limit 3
   python analyze_projects_multi_agent_v2.py --deep-research --research-only --limit 1
@@ -662,6 +733,8 @@ Database management:
   python analyze_projects_multi_agent_v2.py --clear project1 project2 project3
         """
     )
+    parser.add_argument('--provider', choices=['openai', 'local'], default='openai',
+                       help='AI provider: openai (OpenAI models with web search) or local (LM Studio + DDGS) (default: openai)')
     parser.add_argument('--limit', type=int, default=None, 
                        help='Number of projects to process (0 for no limit)')
     parser.add_argument('--threads', type=int, default=BATCH_PROCESSING_CONFIG['default_batch_size'],
@@ -780,7 +853,7 @@ Database management:
     
     # Show deep research status
     if args.deep_research:
-        deep_research_agent = DeepResearchAgent(None)  # Just for config checking
+        deep_research_agent = DeepResearchAgent()  # Just for config checking
         config_enabled = deep_research_agent.is_enabled()
         if config_enabled:
             print(f"🔬 Deep research: ENABLED in config (${deep_research_agent.get_estimated_cost():.2f} per project)")
@@ -810,7 +883,6 @@ Database management:
     print(f"Split into {total_batches} batches of {batch_size} projects each")
     
     batch_data = {
-        'client': None, # LiteLLM handles API calls directly, so no client object needed here
         'db_manager': db_manager,
         'system_prompt': system_prompt,
         'args': args
@@ -838,7 +910,7 @@ Database management:
     
     # Show deep research summary if enabled
     if args.deep_research:
-        deep_research_agent = DeepResearchAgent(None)
+        deep_research_agent = DeepResearchAgent()
         config_enabled = deep_research_agent.is_enabled()
         estimated_total_cost = successful_analyses * deep_research_agent.get_estimated_cost()
         
@@ -849,6 +921,12 @@ Database management:
             print(f"   Deep research: ENABLED in config (est. total cost: ${estimated_total_cost:.2f})")
         else:
             print(f"   Deep research: ENABLED via flag override (est. total cost: ${estimated_total_cost:.2f})")
+    
+    # Print final session cost summary
+    print(f"\n💰 Session Summary:")
+    print(f"   Projects analyzed: {successful_analyses}")
+    print(f"   Cost tracking: Native LiteLLM cost calculation")
+    print(f"   Note: Individual costs shown per project above")
     
     print(f"   Database: {db_manager.db_path}")
     print(f"   Frontend: Run 'python server.py' to view dashboard")

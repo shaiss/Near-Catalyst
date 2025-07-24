@@ -25,7 +25,7 @@ class APIUsageTracker:
     
     def __init__(self, client=None, db_manager: DatabaseManager = None, session_id: str = None):
         """
-        Initialize the usage tracker with LiteLLM native cost tracking.
+        Initialize the usage tracker with LiteLLM native cost tracking and Phase 2 enhanced completion.
         
         Args:
             client: Not used (kept for compatibility) - LiteLLM handles API calls directly
@@ -37,6 +37,15 @@ class APIUsageTracker:
         self.session_id = session_id or self._generate_session_id()
         self.current_project = None
         self.current_agent = None
+        
+        # Phase 2: Enhanced completion support
+        self.enhanced_completion = None
+        try:
+            from agents.enhanced_completion import get_enhanced_completion
+            self.enhanced_completion = get_enhanced_completion()
+            print(f"    🔄 Enhanced completion integration enabled")
+        except ImportError:
+            print(f"    ℹ️ Enhanced completion not available, using standard LiteLLM")
         
         # Load LiteLLM pricing data (automatic)
         try:
@@ -87,26 +96,31 @@ class APIUsageTracker:
     def _get_litellm_cost(self, response) -> float:
         """
         Extract cost from LiteLLM response using built-in cost tracking.
+        Enhanced for Phase 2 to handle local model cost reporting.
         
         Args:
             response: LiteLLM completion response
             
         Returns:
-            float: Cost in USD from LiteLLM's built-in tracking
+            float: Cost in USD from LiteLLM's built-in tracking (0.0 for local models)
         """
-        try:
-            # Method 1: Check _hidden_params for response_cost (most direct)
-            if hasattr(response, '_hidden_params') and response._hidden_params:
-                cost = response._hidden_params.get('response_cost', 0.0)
-                if cost and cost > 0:
-                    return float(cost)
+        # Phase 2: Check if this was a local model (cost = 0)
+        if hasattr(response, '_hidden_params') and response._hidden_params:
+            if response._hidden_params.get('cost_source') == 'local':
+                return 0.0  # Local models are free
             
-            # Method 2: Use litellm.completion_cost() helper function
+            cost = response._hidden_params.get('response_cost', 0.0)
+            if cost and cost > 0:
+                return float(cost)
+        
+        # Consolidated cost extraction using single litellm.completion_cost() approach
+        try:
+            # Primary method: Use response object directly (preferred)
             cost = litellm.completion_cost(completion_response=response)
             if cost and cost > 0:
                 return float(cost)
                 
-            # Method 3: Fallback to manual calculation with LiteLLM model pricing
+            # Fallback: Manual calculation if response object method fails
             if hasattr(response, 'usage') and response.usage and hasattr(response, 'model'):
                 cost = litellm.completion_cost(
                     model=response.model,
@@ -116,8 +130,18 @@ class APIUsageTracker:
                 if cost and cost > 0:
                     return float(cost)
             
+        except ValueError as e:
+            # Expected: Invalid model name or unsupported model
+            print(f"      ℹ️ Cost calculation skipped (unsupported model): {e}")
+        except (TypeError, AttributeError) as e:
+            # Unexpected: Malformed response structure
+            print(f"      ⚠️ Cost extraction failed (malformed response): {e}")
+        except KeyError as e:
+            # Expected: Missing usage data for free/local models
+            print(f"      ℹ️ Cost calculation skipped (missing usage data): {e}")
         except Exception as e:
-            print(f"      ⚠️ LiteLLM cost extraction failed: {e}")
+            # Unexpected: Log for investigation but don't crash
+            print(f"      🚨 Unexpected cost calculation error: {e}")
         
         return 0.0  # Fallback if all methods fail
 
@@ -148,7 +172,9 @@ class APIUsageTracker:
             del kwargs['input']
         
         try:
-            response = litellm.completion(model=model, **kwargs)
+            # Use our LiteLLM router instead of direct litellm.completion for provider support
+            from agents.litellm_router import completion
+            response = completion(model=model, **kwargs)
             success = True
             
         except Exception as e:
@@ -187,13 +213,20 @@ class APIUsageTracker:
                     response_details={'usage': usage_data} if success else None
                 )
                 
-                # Log the usage with LiteLLM cost data
+                # Log the usage with LiteLLM cost data and Phase 2 enhancements  
                 if success:
+                    # Check if local model was used
+                    cost_source = getattr(response, '_hidden_params', {}).get('cost_source', 'unknown')
+                    local_model = getattr(response, '_hidden_params', {}).get('local_model_used', None)
+                    
+                    cost_indicator = "🆓" if estimated_cost == 0.0 else f"${estimated_cost:.4f}"
+                    model_info = f"({local_model})" if local_model else f"({model})"
+                    
                     if usage_data['reasoning_tokens'] > 0:
                         reasoning_pct = (usage_data['reasoning_tokens'] / usage_data['total_tokens'] * 100) if usage_data['total_tokens'] > 0 else 0
-                        print(f"      💭 {operation_type}: {usage_data['reasoning_tokens']:,} reasoning tokens ({reasoning_pct:.1f}% of {usage_data['total_tokens']:,} total) - ${estimated_cost:.4f}")
+                        print(f"      💭 {operation_type}: {usage_data['reasoning_tokens']:,} reasoning tokens ({reasoning_pct:.1f}% of {usage_data['total_tokens']:,} total) - {cost_indicator} {model_info}")
                     else:
-                        print(f"      📊 {operation_type}: {usage_data['total_tokens']:,} tokens - ${estimated_cost:.4f}")
+                        print(f"      📊 {operation_type}: {usage_data['total_tokens']:,} tokens - {cost_indicator} {model_info}")
                 else:
                     print(f"      ❌ {operation_type} failed: {error_message[:50]}...")
         
@@ -217,7 +250,11 @@ class APIUsageTracker:
         response = None
         
         try:
-            response = litellm.completion(model=model, **kwargs)
+            # Phase 2: Use enhanced completion if available, otherwise use standard LiteLLM
+            if self.enhanced_completion:
+                response = self.enhanced_completion.sync_completion(model=model, **kwargs)
+            else:
+                response = litellm.completion(model=model, **kwargs)
             success = True
             
         except Exception as e:
@@ -256,13 +293,20 @@ class APIUsageTracker:
                     response_details={'usage': usage_data} if success else None
                 )
                 
-                # Log the usage with LiteLLM cost data
+                # Log the usage with LiteLLM cost data and Phase 2 enhancements
                 if success:
+                    # Check if local model was used
+                    cost_source = getattr(response, '_hidden_params', {}).get('cost_source', 'unknown')
+                    local_model = getattr(response, '_hidden_params', {}).get('local_model_used', None)
+                    
+                    cost_indicator = "🆓" if estimated_cost == 0.0 else f"${estimated_cost:.4f}"
+                    model_info = f"({local_model})" if local_model else f"({model})"
+                    
                     if usage_data['reasoning_tokens'] > 0:
                         reasoning_pct = (usage_data['reasoning_tokens'] / usage_data['total_tokens'] * 100) if usage_data['total_tokens'] > 0 else 0
-                        print(f"      💭 {operation_type}: {usage_data['reasoning_tokens']:,} reasoning tokens ({reasoning_pct:.1f}% of {usage_data['total_tokens']:,} total) - ${estimated_cost:.4f}")
+                        print(f"      💭 {operation_type}: {usage_data['reasoning_tokens']:,} reasoning tokens ({reasoning_pct:.1f}% of {usage_data['total_tokens']:,} total) - {cost_indicator} {model_info}")
                     else:
-                        print(f"      📊 {operation_type}: {usage_data['total_tokens']:,} tokens - ${estimated_cost:.4f}")
+                        print(f"      📊 {operation_type}: {usage_data['total_tokens']:,} tokens - {cost_indicator} {model_info}")
                 else:
                     print(f"      ❌ {operation_type} failed: {error_message[:50]}...")
         

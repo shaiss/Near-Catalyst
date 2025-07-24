@@ -8,120 +8,121 @@ collaborators that can unlock developer potential and create "1 + 1 = 3" value p
 
 import json
 from config.config import TIMEOUTS
-from database.usage_tracker import APIUsageTracker
-from database.database_manager import DatabaseManager
+from agents.litellm_router import completion
 
 
 class ResearchAgent:
     """
     Agent 1: Research agent that gathers comprehensive information about projects
-    using LiteLLM's web search capabilities with cost tracking.
+    using LiteLLM Router with automatic local model routing and fallbacks.
     """
     
-    def __init__(self, client=None, db_manager=None, usage_tracker=None):
-        """Initialize the research agent with usage tracking."""
+    def __init__(self, db_manager=None, provider='openai'):
+        """Initialize the research agent with provider selection."""
         self.timeout = TIMEOUTS['research_agent']
+        self.db_manager = db_manager
+        self.provider = provider
         
-        # Initialize usage tracking
-        self.db_manager = db_manager or DatabaseManager()
-        self.usage_tracker = usage_tracker or APIUsageTracker(None, self.db_manager)
-    
-    def analyze(self, project_name, enriched_context):
+    def analyze(self, project_name, context):
         """
-        Conduct comprehensive research about a project using enriched context from NEAR catalog.
+        Conduct comprehensive research on a project to assess hackathon catalyst potential.
         
         Args:
-            project_name (str): Name of the project
-            enriched_context (dict): Full project context including NEAR catalog data
+            project_name: Name of the project to research
+            context: Additional context from NEAR catalog
             
         Returns:
-            dict: Research results with content, sources, and success status
+            Dict with research results, sources, and cost information
         """
-        # Set context for usage tracking
-        self.usage_tracker.set_context(project_name, "research_agent")
         
-        # Extract data from enriched context
-        basic_profile = enriched_context.get('basic_profile', {})
-        catalog_data = enriched_context.get('catalog_data', {})
+        # Truncate context to manageable size
+        if len(context) > 2000:
+            context = context[:2000] + "... [truncated]"
         
-        # Build comprehensive context string for research prompt
-        context_parts = []
-        
-        # Basic profile data
-        if basic_profile.get('tagline'):
-            context_parts.append(f"Tagline: {basic_profile['tagline']}")
-        if basic_profile.get('tags'):
-            tags = ', '.join(basic_profile['tags'].values()) if isinstance(basic_profile['tags'], dict) else str(basic_profile['tags'])
-            context_parts.append(f"Tags: {tags}")
-        if basic_profile.get('description'):
-            context_parts.append(f"Description: {basic_profile['description']}")
-        
-        # NEAR catalog data
-        if catalog_data:
-            if catalog_data.get('description'):
-                context_parts.append(f"Catalog Description: {catalog_data['description']}")
-            if catalog_data.get('category'):
-                context_parts.append(f"Category: {catalog_data['category']}")
-            if catalog_data.get('stage'):
-                context_parts.append(f"Development Stage: {catalog_data['stage']}")
-            if catalog_data.get('tech_stack'):
-                context_parts.append(f"Tech Stack: {catalog_data['tech_stack']}")
-            if catalog_data.get('website'):
-                context_parts.append(f"Website: {catalog_data['website']}")
-            if catalog_data.get('github'):
-                context_parts.append(f"GitHub: {catalog_data['github']}")
-        
-        context_string = "\n".join(context_parts) if context_parts else f"Limited information available about {project_name}"
-        
-        # Build comprehensive research prompt
-        research_prompt = f"""
-As a NEAR Protocol Partnership Scout, conduct comprehensive research on "{project_name}" to evaluate its potential as a hackathon catalyst partner.
+        prompt = f"""You are an expert research analyst focused on discovering hackathon catalyst partners for NEAR Protocol. Your mission is to identify collaborators that can unlock developer potential and create "1 + 1 = 3" value propositions.
 
-Known Information:
-{context_string}
+RESEARCH TARGET: {project_name}
 
-Your goal is to discover if this project can enable "1 + 1 = 3" value propositions for NEAR hackathon developers. 
+CONTEXT FROM NEAR CATALOG:
+{context}
 
-Focus your research on:
-1. **Technology Complementarity**: How does this technology fill gaps or enhance NEAR's capabilities?
-2. **Developer Experience**: What tools, SDKs, or resources do they provide for developers?
-3. **Hackathon Readiness**: Can this be integrated quickly during a 48-72 hour hackathon?
-4. **Community & Support**: What kind of developer support and mentorship do they offer?
-5. **Past Collaborations**: Any history of successful hackathon partnerships or developer programs?
-6. **Innovation Potential**: What new use cases or proof-points could this enable for NEAR?
+RESEARCH MISSION:
+Conduct comprehensive analysis to determine if this project could be a valuable hackathon catalyst partner for NEAR Protocol. Focus on discovering collaborative opportunities that unlock developer potential during hackathons.
 
-Research using web search to find documentation, developer guides, GitHub repositories, 
-blog posts, and other official sources wherever possible.
+Your research should cover:
 
-Since I already have some project details from NEAR catalog, use web search to find additional 
-technical details, developer resources, community engagement, and hackathon participation history 
-that would help evaluate this as a NEAR catalyst partner.
-"""
-        
+1. **Core Technology & Capabilities**
+   - What unique technical capabilities does this project offer?
+   - How could these capabilities complement NEAR's blockchain infrastructure?
+   - What gaps in NEAR's developer stack could this fill?
+
+2. **Hackathon Collaboration Potential**
+   - How could developers combine NEAR + this project during hackathons?
+   - What novel use cases become possible with both technologies together?
+   - Are there existing integrations or would new ones need to be built?
+
+3. **Developer Experience & Integration**
+   - How developer-friendly is this project's tooling and documentation?
+   - What's the learning curve for developers new to this technology?
+   - Are there SDKs, APIs, or other developer tools available?
+
+4. **Community & Ecosystem Alignment**
+   - Who is the target developer audience for this project?
+   - Is there overlap with NEAR's developer community?
+   - Does this project actively participate in hackathons?
+
+5. **Partnership History & Support**
+   - Has this project collaborated with other blockchain protocols?
+   - Do they provide mentorship, bounties, or technical support for hackathons?
+   - What level of partnership engagement might be realistic?
+
+Provide comprehensive, factual analysis based on available information. Be specific about capabilities, integration potential, and collaboration opportunities. If information is limited, note what additional research would be valuable.
+
+Focus on discovering whether this could unlock new possibilities for NEAR developers during hackathons."""
+
         try:
-            # Use LiteLLM through usage tracker for cost tracking
-            research_response = self.usage_tracker.track_chat_completions_create(
+            print(f"      🔍 Researching {project_name} with LiteLLM Router...")
+            
+            # Use LiteLLM Router with provider-specific routing
+            response = completion(
                 model="gpt-4.1",
-                operation_type="research",
-                messages=[{"role": "user", "content": research_prompt}],
-                timeout=self.timeout
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=4000,
+                timeout=self.timeout,
+                provider=self.provider
             )
             
-            # Extract response content (LiteLLM returns OpenAI-compatible format)
-            research_content = research_response.choices[0].message.content
-            sources = []  # Web search sources will be handled in future phases
-                    
+            content = response.choices[0].message.content
+            cost = 0.0
+            
+            # Extract cost and routing information from Router
+            if hasattr(response, '_hidden_params'):
+                cost = response._hidden_params.get('response_cost', 0.0)
+                cost_source = response._hidden_params.get('cost_source', 'openai')
+                local_used = response._hidden_params.get('local_model_used', False)
+                router_tags = response._hidden_params.get('router_tags', [])
+                
+                if local_used:
+                    print(f"      🆓 Using local model ({', '.join(router_tags)}) - Cost: Free")
+                else:
+                    print(f"      💰 Using OpenAI model ({', '.join(router_tags)}) - Cost: ${cost:.4f}")
+            
             return {
-                "content": research_content,
-                "sources": sources,
-                "success": True
+                "success": True,
+                "content": content,
+                "sources": ["comprehensive_analysis"],
+                "cost": cost
             }
             
         except Exception as e:
-            print(f"      ❌ Research failed: {str(e)}")
+            error_msg = f"Research agent error: {str(e)}"
+            print(f"❌ {error_msg}")
+            
             return {
-                "content": f"Research failed: {str(e)}",
-                "sources": [],
                 "success": False,
-                "error": str(e)
+                "content": "",
+                "sources": [],
+                "error": error_msg,
+                "cost": 0.0
             } 

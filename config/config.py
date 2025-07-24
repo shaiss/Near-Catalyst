@@ -10,6 +10,7 @@ Features:
 - Hackathon catalyst benchmarks loader
 - Multi-agent coordination timeouts
 - Database configuration for analysis persistence
+- Phase 2: LM Studio Python SDK configuration for local models
 """
 
 import json
@@ -102,32 +103,54 @@ DEEP_RESEARCH_CONFIG = {
     ]
 }
 
-# Question Agent Two-Step Configuration
-# Step 1: Research with web search, Step 2: Analysis with reasoning
+# Question Agent Provider-Specific Configuration
+# Supports both OpenAI (with web search) and Local (with DDGS) providers
 QUESTION_AGENT_CONFIG = {
-    # Research Step: Web search for gathering information
-    'research_model': {
-        'production': 'gpt-4o-search-preview',      # Web search enabled for data gathering
-        'development': 'gpt-4o-search-preview',     # Consistent across environments
-        'max_output_tokens': 4000,   # Standard output tokens for search model
-        'use_reasoning': False,      # Research step doesn't need reasoning
-        'enable_web_search': True    # REQUIRED for information gathering
+    # OpenAI Provider Configuration
+    'openai': {
+        'research_model': {
+            'production': 'gpt-4o-search-preview',      # OpenAI web search enabled
+            'development': 'gpt-4o-search-preview',     # Consistent across environments
+            'max_output_tokens': 4000,
+            'use_reasoning': False,
+            'enable_web_search': True,    # Uses OpenAI web search
+            'tags': ['openai']           # LiteLLM router tags
+        },
+        'reasoning_model': {
+            'production': 'o4-mini',     # OpenAI reasoning model
+            'development': 'o4-mini',    # Consistent model
+            'effort': 'medium',
+            'max_output_tokens': 8000,
+            'use_reasoning': True,
+            'include_reasoning_summary': True,
+            'reasoning_effort': 'medium',
+            'tags': ['openai']           # LiteLLM router tags
+        }
     },
     
-    # Analysis Step: Reasoning model for deep analysis of research
-    'reasoning_model': {
-        'production': 'o4-mini',    # Cost-effective reasoning model for production
-        'development': 'o4-mini',   # Same model for dev/testing (consistent & affordable)
-        'effort': 'medium',         # Balance between speed and reasoning quality
-        'max_output_tokens': 8000,  # Higher tokens for reasoning analysis
-        'use_reasoning': True,      # Enable reasoning tokens extraction
-        'include_reasoning_summary': True,  # Include reasoning summary in response
-        'reasoning_effort': 'medium'  # Reasoning effort level
+    # Local Provider Configuration  
+    'local': {
+        'research_model': {
+            'production': 'qwen2.5-72b-instruct',     # Available model in LM Studio (qwen3-235b-a22b pending)
+            'development': 'qwen2.5-coder-32b',       # Lighter model for dev
+            'max_output_tokens': 4000,
+            'use_reasoning': False,
+            'enable_web_search': True,    # Uses DDGS instead of OpenAI
+            'tags': ['local']            # LiteLLM router tags
+        },
+        'reasoning_model': {
+            'production': 'deepseek-r1-distill-qwen-32b',  # Local reasoning model
+            'development': 'qwen2.5-coder-32b',            # Consistent local model
+            'effort': 'medium',
+            'max_output_tokens': 8000,
+            'use_reasoning': True,
+            'include_reasoning_summary': True,
+            'reasoning_effort': 'medium',
+            'tags': ['local']            # LiteLLM router tags
+        }
     },
     
-    # Fallback configuration
-    'fallback_research_model': 'gpt-4o',           # Fallback if search model unavailable
-    'fallback_reasoning_model': 'o3-mini',         # Fallback reasoning model (cheaper than o1)
+    # Shared configuration (applies to all providers)
     'use_web_search': True,       # Enable web search for data enrichment (REQUIRED)
     
     # Context optimization for two-step process
@@ -180,6 +203,85 @@ RECOMMENDATIONS = {
     'mixed_fit': "Mixed; negotiate scope",
     'decline': "Decline or redesign the collaboration"
 }
+
+# Phase 2: LiteLLM + LM Studio SDK Configuration
+# NOTE: Provider selection is ONLY via --provider CLI parameter, not environment variables
+LITELLM_CONFIG = {
+    'use_lmstudio_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
+    
+    # LM Studio Server Configuration (Local vs Remote)
+    'use_remote_lmstudio': os.getenv('USE_REMOTE_LMSTUDIO', 'false').lower() == 'true',
+    'lm_studio_base_url': os.getenv('LM_STUDIO_API_BASE', 'http://localhost:1234/v1'),
+    'lm_studio_api_key': os.getenv('LM_STUDIO_API_KEY', ''),  # Usually not needed
+    
+    # Remote LM Studio Configuration (when USE_REMOTE_LMSTUDIO=true)
+    'remote_lmstudio_url': os.getenv('REMOTE_LMSTUDIO_URL', 'http://your-server:1234/v1'),
+    'remote_lmstudio_api_key': os.getenv('REMOTE_LMSTUDIO_API_KEY', ''),  # Usually not needed
+    
+    # Phase 2: OpenAI → Local OSS Model Mapping
+    'model_mapping': {
+        # Core models (via LM Studio Python SDK + local API)
+        'gpt-4.1': 'qwen2.5-72b-instruct',                 # Research, Summary, Question agents
+        'o3': 'deepseek-r1-distill-qwen-32b',              # Question agent reasoning (production)
+        'o4-mini': 'deepseek-r1-distill-qwen-32b',         # Use same reasoning model  
+        'gpt-4': 'qwen2.5-72b-instruct',                   # General fallback
+        'gpt-4.1-mini': 'qwen2.5-72b-instruct',            # General fallback
+        'gpt-4o-search-preview': 'qwen2.5-72b-instruct',   # Research fallback (will add search later)
+        
+        # Deep research models - Phase 3 replacement targets
+        'o4-mini-deep-research-2025-06-26': 'deepseek-r1-distill-qwen-32b',  # Phase 3: Multi-agent system
+    },
+    
+    # Cost savings tracking
+    'cost_comparison': {
+        'gpt-4.1': {'openai': 0.00001, 'local': 0.0},      # $10/1M → Free
+        'o3': {'openai': 0.00006, 'local': 0.0},           # $60/1M → Free
+        'o4-mini-deep-research': {'openai': 0.0002, 'local': 0.0}  # $200/1M → Free (Phase 3)
+    }
+}
+
+# LM Studio SDK Configuration
+LMSTUDIO_CONFIG = {
+    'use_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
+    'auto_load_models': True,  # Automatically load models when needed (local only)
+    'model_load_timeout': 300,  # 5 minutes for model loading
+    'local_models_path': os.getenv('LOCAL_MODELS_PATH'),  # Path to pre-downloaded models
+    'default_generation_config': {
+        'temperature': 0.1,
+        'max_tokens': 2048,
+        'top_p': 0.9
+    },
+    # Required models for Phase 2
+    'required_models': [
+        'qwen2.5-72b-instruct',      # General purpose model
+        'deepseek-r1-distill-qwen-32b'  # Reasoning model
+    ],
+    
+    # Remote LM Studio specific settings
+    'remote_model_management': os.getenv('USE_REMOTE_LMSTUDIO', 'false').lower() == 'true',
+    'disable_sdk_for_remote': True,  # Don't use Python SDK for remote servers
+}
+
+
+def get_lmstudio_endpoint():
+    """
+    Get the appropriate LM Studio endpoint based on local vs remote configuration.
+    
+    Returns:
+        dict: Dictionary with 'url' and 'api_key' for the LM Studio endpoint
+    """
+    if LITELLM_CONFIG['use_remote_lmstudio']:
+        return {
+            'url': LITELLM_CONFIG['remote_lmstudio_url'],
+            'api_key': LITELLM_CONFIG['remote_lmstudio_api_key'],
+            'is_remote': True
+        }
+    else:
+        return {
+            'url': LITELLM_CONFIG['lm_studio_base_url'],
+            'api_key': LITELLM_CONFIG['lm_studio_api_key'],
+            'is_remote': False
+        }
 
 # Partnership Framework Benchmarks
 def load_partnership_benchmarks(format_preference: str = 'auto'):
