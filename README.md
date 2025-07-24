@@ -1,7 +1,7 @@
 # NEAR Catalyst Framework - Multi-Agent Partnership Discovery System
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![OpenAI API](https://img.shields.io/badge/OpenAI-GPT--4.1%20%7C%20O3%20%7C%20O4--mini-green.svg)](https://openai.com/)
+[![OpenAI API](https://img.shields.io/badge/OpenAI-GPT--4o%20%7C%20o4--mini-green.svg)](https://openai.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![NEAR Protocol](https://img.shields.io/badge/NEAR-Protocol-00D4FF.svg)](https://near.org)
 
@@ -25,10 +25,15 @@
 ## ✨ Features
 
 ### 🤖 **8-Agent Multi-Agent System**
-- **Research Agent**: Web search + NEAR catalog data extraction
-- **Deep Research Agent**: OpenAI O4-mini deep research (optional, ~$2/project)
-- **6x Question Agents**: Parallel analysis using O3/O4-mini reasoning models
+- **Research Agent**: Web search + NEAR catalog data extraction (OpenAI native or DDGS)
+- **Deep Research Agent**: o4-mini deep research (optional, ~$2/project)
+- **6x Question Agents**: Parallel analysis using configurable reasoning models
 - **Summary Agent**: Synthesis and final recommendations
+
+### ⚡ **Dual Provider Support**
+- **OpenAI Provider**: Native web search, GPT-4o + o4-mini reasoning models
+- **Local Provider**: LM Studio integration with DDGS web search, free inference
+- **Unified API**: LiteLLM abstraction enables seamless provider switching
 
 ### 🎯 **Hackathon-Focused Analysis**
 - **6 Diagnostic Questions**: Gap-Filler, Proof-Points, Clear Story, Dev-Friendly, Aligned Incentives, Ecosystem Fit
@@ -86,8 +91,11 @@ pip install -r requirements.txt
 # 3. Configure OpenAI API (get key from https://platform.openai.com/api-keys)
 echo "OPENAI_API_KEY=your_api_key_here" > .env
 
-# 4. Run analysis on 5 projects
+# 4. Run analysis with OpenAI models (requires API key)
 python analyze_projects_multi_agent_v2.py --limit 5
+
+# Alternative: Use local models via LM Studio (free, requires setup)
+# python analyze_projects_multi_agent_v2.py --provider local --limit 5
 
 # 5. Start web dashboard
 python server.py
@@ -98,8 +106,10 @@ python server.py
 
 ### Prerequisites
 - **Docker & Docker Compose** (recommended) OR **Python 3.8+**
-- **OpenAI API key** with GPT-4.1 access
-- **For deep research**: Access to O4-mini-deep-research models (~$2/project)
+- **Either**:
+  - **OpenAI API key** with GPT-4.1 access (for OpenAI provider)
+  - **LM Studio** with compatible models (for local provider - free)
+- **For deep research**: Access to o4-mini models (~$2/project)
 
 ### Option 1: Docker Installation (Recommended)
 
@@ -109,8 +119,9 @@ python server.py
 git clone <repository-url>
 cd near-catalyst-framework
 
-# 2. Set up environment variables
+# 2. Set up environment (for OpenAI provider)
 echo "OPENAI_API_KEY=sk-your-openai-api-key-here" > .env
+# Skip this step if using --provider local
 
 # 3. Start services
 docker-compose up -d
@@ -198,8 +209,11 @@ python server.py --check-db
 ### Basic Analysis Commands
 
 ```bash
-# Analyze 5 projects (default concurrency)
+# Analyze 5 projects with OpenAI models (default)
 python analyze_projects_multi_agent_v2.py --limit 5
+
+# Use local LM Studio models instead of OpenAI
+python analyze_projects_multi_agent_v2.py --provider local --limit 5
 
 # High-throughput analysis with custom concurrency
 python analyze_projects_multi_agent_v2.py --threads 8 --limit 50
@@ -210,7 +224,7 @@ python analyze_projects_multi_agent_v2.py --force-refresh --limit 10
 
 ### Deep Research (Advanced Analysis)
 
-⚠️ **Cost Warning**: Deep research uses OpenAI's O4-mini-deep-research model at ~$2 per project
+⚠️ **Cost Warning**: Deep research uses OpenAI's o4-mini model at ~$2 per project
 
 ```bash
 # Option 1: Enable via command line flag (recommended for testing)
@@ -222,6 +236,9 @@ python analyze_projects_multi_agent_v2.py --limit 3
 
 # Deep research with only general research (skip question analysis)
 python analyze_projects_multi_agent_v2.py --deep-research --research-only --limit 1
+
+# Use deep research with local models (if supported)
+python analyze_projects_multi_agent_v2.py --provider local --deep-research --limit 1
 ```
 
 ### Database Management
@@ -331,6 +348,7 @@ Your benchmark file should contain:
 python analyze_projects_multi_agent_v2.py [OPTIONS]
 
 Core Options:
+  --provider PROVIDER    AI provider: 'openai' (default) or 'local' (LM Studio)
   --limit N              Process N projects (0 for unlimited, default: all)
   --threads N            Concurrent projects (default: 5, max: 10)
   --force-refresh        Ignore cache, refresh all data
@@ -348,14 +366,17 @@ Format Control:
   --benchmark-format     Force 'json' or 'csv' benchmark format
 
 Examples:
-  # Quick test with cost control
+  # Quick test with OpenAI models
   python analyze_projects_multi_agent_v2.py --limit 3 --threads 1
   
-  # High-volume batch processing
+  # Use local models via LM Studio
+  python analyze_projects_multi_agent_v2.py --provider local --limit 5
+  
+  # High-volume batch processing with OpenAI
   python analyze_projects_multi_agent_v2.py --threads 8 --limit 100
   
-  # Deep research on select projects
-  python analyze_projects_multi_agent_v2.py --deep-research --limit 5
+  # Deep research with local models
+  python analyze_projects_multi_agent_v2.py --provider local --deep-research --limit 3
   
   # Database cleanup and fresh analysis
   python analyze_projects_multi_agent_v2.py --clear all --limit 10
@@ -374,8 +395,8 @@ Examples:
 
 #### 🤖 **Analysis Agents** (`agents/`)
 - **ResearchAgent** ([research_agent.py](agents/research_agent.py)): Web search + NEAR catalog data
-- **DeepResearchAgent** ([deep_research_agent.py](agents/deep_research_agent.py)): O4-mini deep research (optional)
-- **QuestionAgent** ([question_agent.py](agents/question_agent.py)): 6x parallel analysis using O3/O4-mini reasoning
+- **DeepResearchAgent** ([deep_research_agent.py](agents/deep_research_agent.py)): o4-mini deep research (optional)
+- **QuestionAgent** ([question_agent.py](agents/question_agent.py)): 6x parallel analysis using provider-specific reasoning models
 - **SummaryAgent** ([summary_agent.py](agents/summary_agent.py)): Final synthesis and recommendations
 
 #### 🎯 **6 Diagnostic Questions Framework**
@@ -399,14 +420,14 @@ Examples:
 #### ⚙️ **Configuration** (`config/`)
 - **Centralized config** ([config.py](config/config.py)): All system constants
 - **Benchmark management**: JSON/CSV auto-sync for partnership criteria
-- **Model selection**: O3 for production, O4-mini for development
+- **Provider selection**: OpenAI with native web search or local models via LM Studio
 
 ### Project Structure
 ```
 near-catalyst-framework/
 ├── agents/                              # 8-agent multi-agent system
 │   ├── research_agent.py               # Agent 1: General research + web search
-│   ├── deep_research_agent.py          # Agent 1.5: Optional deep research
+│   ├── deep_research_agent.py          # Agent 1.5: Optional deep research (o4-mini)
 │   ├── question_agent.py               # Agents 2-7: Parallel diagnostic analysis  
 │   ├── summary_agent.py                # Agent 8: Final synthesis
 │   └── __init__.py                     # Agent exports
@@ -440,28 +461,72 @@ near-catalyst-framework/
 
 ### Environment Variables (`.env`)
 ```bash
-# Required: OpenAI API key with GPT-4.1 access
+# Required for OpenAI provider: OpenAI API key with GPT-4.1 access
 OPENAI_API_KEY=sk-your-openai-api-key-here
 
 # Optional: Database location (defaults to project_analyses_multi_agent.db)
 DATABASE_PATH=./data/analyses.db
 ```
 
+### Local Model Setup (LM Studio)
+
+The system supports local models via LM Studio as an alternative to OpenAI:
+
+#### Prerequisites for Local Models
+- **LM Studio** installed and running on default port (1234)
+- **Required models downloaded** in LM Studio:
+  - `qwen2.5-72b-instruct` or `qwen2.5-coder-32b` (research)
+  - `deepseek-r1-distill-qwen-32b` (reasoning)
+
+#### Setup Steps
+1. **Install LM Studio** from [https://lmstudio.ai](https://lmstudio.ai)
+2. **Download models** via LM Studio's model manager
+3. **Start LM Studio server** (port 1234 by default)
+4. **Use local provider**:
+   ```bash
+   python analyze_projects_multi_agent_v2.py --provider local --limit 5
+   ```
+
+#### Model Selection Strategy
+- **OpenAI Provider**: Uses native web search, consistent performance, costs apply
+- **Local Provider**: Uses DDGS web search, free inference, requires powerful hardware
+
+See [docs/lm-studio-setup.md](docs/lm-studio-setup.md) for detailed setup instructions.
+
 ### Key Configuration Settings (`config/config.py`)
 
 ```python
-# Deep Research (O4-mini model, ~$2/project)
+# Deep Research (o4-mini model, ~$2/project)
 DEEP_RESEARCH_CONFIG = {
     'enabled': False,  # Set True to enable by default
-    'model': 'o4-mini-deep-research-2025-06-26',
+    'model': 'o4-mini',        # Standard LiteLLM model name
+    'priming_model': 'gpt-4.1', # Model for context priming
     'cost_per_input': 2.00
 }
 
-# Question Agent Reasoning Models  
+# Question Agent Provider-Specific Configuration  
 QUESTION_AGENT_CONFIG = {
-    'reasoning_model': {
-        'production': 'o3',      # Advanced reasoning
-        'development': 'o4-mini' # Cost-effective testing
+    # OpenAI Provider (with native web search)
+    'openai': {
+        'research_model': {
+            'production': 'gpt-4o-search-preview',
+            'development': 'gpt-4o-search-preview'
+        },
+        'reasoning_model': {
+            'production': 'o4-mini',
+            'development': 'o4-mini'
+        }
+    },
+    # Local Provider (LM Studio + DDGS web search)
+    'local': {
+        'research_model': {
+            'production': 'qwen2.5-72b-instruct',
+            'development': 'qwen2.5-coder-32b'
+        },
+        'reasoning_model': {
+            'production': 'deepseek-r1-distill-qwen-32b',
+            'development': 'qwen2.5-coder-32b'
+        }
     }
 }
 
@@ -675,7 +740,7 @@ tracker.print_session_summary()
 
 - **Input caching**: Reduces duplicate API calls  
 - **Context truncation**: Optimizes token usage for reasoning models
-- **Model selection**: O4-mini for development, O3 for production
+- **Model selection**: Provider-specific models optimized for each task
 - **Timeout controls**: Prevents runaway costs
 - **Deep research limits**: 50 tool calls maximum per analysis
 
@@ -684,8 +749,9 @@ tracker.print_session_summary()
 ```python
 # Estimated costs (as of January 2025):
 # - Standard analysis (GPT-4.1): ~$0.05 per project
-# - With reasoning models (O3/O4-mini): ~$0.20 per project  
-# - Deep research (O4-mini-deep): ~$2.00 per project
+# - With reasoning models (o4-mini): ~$0.20 per project  
+# - Deep research (o4-mini): ~$2.00 per project
+# - Local models: Free (requires LM Studio setup)
 
 # Monitor costs in dashboard:
 # - Real-time token counters
