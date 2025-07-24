@@ -186,8 +186,15 @@ RECOMMENDATIONS = {
 LITELLM_CONFIG = {
     'use_local_models': os.getenv('USE_LOCAL_MODELS', 'false').lower() == 'true',
     'use_lmstudio_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
+    
+    # LM Studio Server Configuration (Local vs Remote)
+    'use_remote_lmstudio': os.getenv('USE_REMOTE_LMSTUDIO', 'false').lower() == 'true',
     'lm_studio_base_url': os.getenv('LM_STUDIO_API_BASE', 'http://localhost:1234/v1'),
     'lm_studio_api_key': os.getenv('LM_STUDIO_API_KEY', 'local-key'),
+    
+    # Remote LM Studio Configuration (when USE_REMOTE_LMSTUDIO=true)
+    'remote_lmstudio_url': os.getenv('REMOTE_LMSTUDIO_URL', 'http://your-server:1234/v1'),
+    'remote_lmstudio_api_key': os.getenv('REMOTE_LMSTUDIO_API_KEY', 'your-remote-key'),
     
     # Phase 2: OpenAI → Local OSS Model Mapping
     'model_mapping': {
@@ -214,7 +221,7 @@ LITELLM_CONFIG = {
 # LM Studio SDK Configuration
 LMSTUDIO_CONFIG = {
     'use_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
-    'auto_load_models': True,  # Automatically load models when needed
+    'auto_load_models': True,  # Automatically load models when needed (local only)
     'model_load_timeout': 300,  # 5 minutes for model loading
     'default_generation_config': {
         'temperature': 0.1,
@@ -225,8 +232,33 @@ LMSTUDIO_CONFIG = {
     'required_models': [
         'qwen2.5-72b-instruct',      # General purpose model
         'deepseek-r1-distill-qwen-32b'  # Reasoning model
-    ]
+    ],
+    
+    # Remote LM Studio specific settings
+    'remote_model_management': os.getenv('USE_REMOTE_LMSTUDIO', 'false').lower() == 'true',
+    'disable_sdk_for_remote': True,  # Don't use Python SDK for remote servers
 }
+
+
+def get_lmstudio_endpoint():
+    """
+    Get the appropriate LM Studio endpoint based on local vs remote configuration.
+    
+    Returns:
+        dict: Dictionary with 'url' and 'api_key' for the LM Studio endpoint
+    """
+    if LITELLM_CONFIG['use_remote_lmstudio']:
+        return {
+            'url': LITELLM_CONFIG['remote_lmstudio_url'],
+            'api_key': LITELLM_CONFIG['remote_lmstudio_api_key'],
+            'is_remote': True
+        }
+    else:
+        return {
+            'url': LITELLM_CONFIG['lm_studio_base_url'],
+            'api_key': LITELLM_CONFIG['lm_studio_api_key'],
+            'is_remote': False
+        }
 
 # Partnership Framework Benchmarks
 def load_partnership_benchmarks(format_preference: str = 'auto'):

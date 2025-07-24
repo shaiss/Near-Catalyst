@@ -13,8 +13,9 @@ This replaces manual GUI model management with Python code control.
 
 import asyncio
 import time
+import requests
 from typing import Dict, Optional, List, Any
-from config.config import LITELLM_CONFIG, LMSTUDIO_CONFIG
+from config.config import LITELLM_CONFIG, LMSTUDIO_CONFIG, get_lmstudio_endpoint
 
 try:
     import lmstudio as lms
@@ -36,10 +37,18 @@ class LMStudioModelManager:
         self.model_mapping = LITELLM_CONFIG['model_mapping']
         self.last_used = {}
         
-        if LMSTUDIO_AVAILABLE and self.config['use_sdk']:
+        # Get endpoint configuration (local vs remote)
+        self.endpoint_config = get_lmstudio_endpoint()
+        self.is_remote = self.endpoint_config['is_remote']
+        
+        if self.is_remote:
+            print(f"🌐 Using remote LM Studio server: {self.endpoint_config['url']}")
+            # For remote servers, don't use Python SDK (it's for local control only)
+            self.client = None
+        elif LMSTUDIO_AVAILABLE and self.config['use_sdk']:
             try:
                 self.client = lms.Client()
-                print("✓ LM Studio SDK client initialized")
+                print("✓ LM Studio SDK client initialized (local)")
             except Exception as e:
                 print(f"⚠️ LM Studio SDK client failed: {e}")
                 self.client = None
@@ -56,6 +65,11 @@ class LMStudioModelManager:
         Returns:
             bool: True if model is ready, False otherwise
         """
+        # For remote LM Studio servers, just check if server is available
+        if self.is_remote:
+            return await self._check_remote_server_availability()
+        
+        # For local LM Studio, use SDK for model management
         if not self.client:
             print("ℹ️ LM Studio SDK not available, falling back to OpenAI")
             return False
@@ -130,10 +144,50 @@ class LMStudioModelManager:
             print(f"⚠️ Failed to load {local_model}, falling back to OpenAI")
             return target_model
     
+    async def _check_remote_server_availability(self) -> bool:
+        """
+        Check if remote LM Studio server is available and has models
+        
+        Returns:
+            bool: True if remote server is accessible, False otherwise
+        """
+        try:
+            # Use requests for async HTTP call
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            def check_server():
+                response = requests.get(
+                    f"{self.endpoint_config['url'].rstrip('/v1')}/v1/models",
+                    headers={'Authorization': f"Bearer {self.endpoint_config['api_key']}"},
+                    timeout=10
+                )
+                return response.status_code == 200, response.json() if response.status_code == 200 else None
+            
+            # Run the synchronous request in a thread
+            success, data = await loop.run_in_executor(None, check_server)
+            
+            if success and data:
+                models = data.get('data', [])
+                print(f"🌐 Remote LM Studio: {len(models)} models available")
+                return len(models) > 0
+            else:
+                print("⚠️ Remote LM Studio server not responding")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Failed to check remote LM Studio server: {e}")
+            return False
+    
     async def _optimize_memory_for_reasoning(self):
         """
         Optimize memory usage for reasoning tasks by unloading general models
+        Note: Only works for local LM Studio servers
         """
+        if self.is_remote:
+            print("ℹ️ Memory optimization skipped for remote LM Studio server")
+            return
+            
         try:
             # Find general purpose models to unload
             general_models = ['qwen2.5-72b-instruct']
@@ -172,6 +226,27 @@ class LMStudioModelManager:
         Returns:
             List of loaded model identifiers
         """
+        if self.is_remote:
+            # For remote servers, query via HTTP API
+            try:
+                loop = asyncio.get_event_loop()
+                
+                def get_remote_models():
+                    response = requests.get(
+                        f"{self.endpoint_config['url'].rstrip('/v1')}/v1/models",
+                        headers={'Authorization': f"Bearer {self.endpoint_config['api_key']}"},
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        return [model['id'] for model in data.get('data', [])]
+                    return []
+                
+                return await loop.run_in_executor(None, get_remote_models)
+            except Exception as e:
+                print(f"⚠️ Failed to get remote models: {e}")
+                return []
+        
         if not self.client:
             return []
             
@@ -184,30 +259,51 @@ class LMStudioModelManager:
     
     async def health_check(self) -> Dict[str, Any]:
         """
-        Perform health check on LM Studio SDK setup
+        Perform health check on LM Studio setup (local SDK or remote server)
         
         Returns:
             Dict with health status information
         """
         health_status = {
             'sdk_available': LMSTUDIO_AVAILABLE,
+            'is_remote': self.is_remote,
+            'endpoint_url': self.endpoint_config['url'],
             'client_connected': self.client is not None,
             'loaded_models': [],
             'total_models': 0,
             'memory_usage': 'unknown'
         }
         
-        if self.client:
+        if self.is_remote:
+            # Health check for remote LM Studio server
+            try:
+                available = await self._check_remote_server_availability()
+                if available:
+                    loaded_models = await self.get_loaded_models()
+                    health_status['loaded_models'] = loaded_models
+                    health_status['total_models'] = len(loaded_models)
+                    health_status['status'] = 'healthy'
+                    health_status['server_type'] = 'remote'
+                else:
+                    health_status['status'] = 'unhealthy'
+                    health_status['error'] = 'Remote server not accessible'
+            except Exception as e:
+                health_status['status'] = 'unhealthy'
+                health_status['error'] = str(e)
+        elif self.client:
+            # Health check for local LM Studio SDK
             try:
                 loaded_models = await self.client.models.list_loaded()
                 health_status['loaded_models'] = [m.identifier for m in loaded_models]
                 health_status['total_models'] = len(loaded_models)
                 health_status['status'] = 'healthy'
+                health_status['server_type'] = 'local'
             except Exception as e:
                 health_status['status'] = 'unhealthy'
                 health_status['error'] = str(e)
         else:
             health_status['status'] = 'unavailable'
+            health_status['server_type'] = 'none'
             
         return health_status
     

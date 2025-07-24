@@ -38,11 +38,19 @@
 
 ### 4. Environment Configuration (`.env.example`)
 ```bash
-# Phase 2: LM Studio Python SDK Configuration
+# Phase 2: LM Studio Configuration
+# Local LM Studio (default - runs on your machine)
 LM_STUDIO_API_BASE=http://localhost:1234/v1
 LM_STUDIO_API_KEY=local-key
 USE_LOCAL_MODELS=false
 USE_LMSTUDIO_SDK=true
+
+# Remote LM Studio (alternative - runs on another server)
+USE_REMOTE_LMSTUDIO=false
+REMOTE_LMSTUDIO_URL=http://your-gpu-server:1234/v1
+REMOTE_LMSTUDIO_API_KEY=your-remote-api-key
+
+# Phase 3 Preparation
 ENABLE_WEB_SEARCH=false
 ```
 
@@ -72,7 +80,9 @@ This will:
 - Check LM Studio setup
 - Validate the installation
 
-### Step 2: Manual LM Studio Setup (One-time)
+### Step 2: LM Studio Setup (Choose Local or Remote)
+
+#### 🏠 **Option A: Local LM Studio** (Requires GPU on your machine)
 ```bash
 # Install LM Studio (if not already installed)
 # Download from: https://lmstudio.ai/download
@@ -86,6 +96,19 @@ lms server start
 # Download required models
 lms get qwen2.5-72b-instruct
 lms get deepseek-r1-distill-qwen-32b
+```
+
+#### 🌐 **Option B: Remote LM Studio** (Use another server's GPU)
+```bash
+# Edit .env file:
+USE_REMOTE_LMSTUDIO=true
+REMOTE_LMSTUDIO_URL=http://your-gpu-server:1234/v1
+REMOTE_LMSTUDIO_API_KEY=your-api-key  # If authentication required
+
+# Note: The remote server needs to:
+# 1. Have LM Studio running with models loaded
+# 2. Be accessible from your machine
+# 3. Have the required models: qwen2.5-72b-instruct, deepseek-r1-distill-qwen-32b
 ```
 
 ### Step 3: Test Integration
@@ -141,6 +164,20 @@ All your existing agents work unchanged! The enhancement happens transparently i
 
 ## 🎛️ Configuration Options
 
+### LM Studio Deployment Options
+
+#### 🏠 **Local LM Studio** 
+**Best for**: Developers with powerful GPUs (RTX 4090+, 24GB+ VRAM)
+- **Pros**: Full control, maximum privacy, no network latency
+- **Cons**: Requires powerful hardware, higher power consumption
+- **Setup**: Install LM Studio locally, manage models via Python SDK
+
+#### 🌐 **Remote LM Studio**
+**Best for**: Teams sharing GPU resources, cloud deployments, limited local hardware
+- **Pros**: Share expensive GPU infrastructure, no local hardware requirements
+- **Cons**: Network latency, depends on remote server availability
+- **Setup**: Point to remote LM Studio server, HTTP API only (no local SDK)
+
 ### Model Mapping (Customizable)
 ```python
 'model_mapping': {
@@ -153,7 +190,8 @@ All your existing agents work unchanged! The enhancement happens transparently i
 
 ### Control Flags
 - `USE_LOCAL_MODELS=true/false` - Enable/disable local model usage
-- `USE_LMSTUDIO_SDK=true/false` - Enable/disable SDK integration
+- `USE_REMOTE_LMSTUDIO=true/false` - Use remote LM Studio server instead of local
+- `USE_LMSTUDIO_SDK=true/false` - Enable/disable SDK integration (local only)
 - `ENABLE_WEB_SEARCH=false` - Prepare for Phase 3 web search
 
 ## 📊 Expected Results

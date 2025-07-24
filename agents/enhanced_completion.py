@@ -14,7 +14,7 @@ Architecture:
 import asyncio
 import litellm
 from typing import Any, Dict, Optional
-from config.config import LITELLM_CONFIG
+from config.config import LITELLM_CONFIG, get_lmstudio_endpoint
 from agents.model_manager import get_model_manager
 
 
@@ -35,9 +35,13 @@ class EnhancedCompletion:
         self.local_models_enabled = self.config['use_local_models']
         self.lmstudio_sdk_enabled = self.config['use_lmstudio_sdk']
         
+        # Get LM Studio endpoint configuration (local vs remote)
+        self.endpoint_config = get_lmstudio_endpoint()
+        
         print(f"🔄 Enhanced Completion initialized:")
         print(f"   Local models: {'enabled' if self.local_models_enabled else 'disabled'}")
-        print(f"   LM Studio SDK: {'enabled' if self.lmstudio_sdk_enabled else 'disabled'}")
+        print(f"   LM Studio: {'remote' if self.endpoint_config['is_remote'] else 'local'} ({self.endpoint_config['url']})")
+        print(f"   SDK control: {'enabled' if self.lmstudio_sdk_enabled and not self.endpoint_config['is_remote'] else 'disabled'}")
     
     async def completion(self, model: str, messages: list, **kwargs) -> Any:
         """
@@ -86,12 +90,12 @@ class EnhancedCompletion:
             # Step 2: Map to local model name
             local_model = self.config['model_mapping'][model]
             
-            # Step 3: Route through LiteLLM to local LM Studio API
+            # Step 3: Route through LiteLLM to LM Studio API (local or remote)
             response = litellm.completion(
                 model=f"lm_studio/{local_model}",  # LiteLLM LM Studio provider format
                 messages=messages,
-                api_base=self.config['lm_studio_base_url'],
-                api_key=self.config['lm_studio_api_key'],
+                api_base=self.endpoint_config['url'],
+                api_key=self.endpoint_config['api_key'],
                 **kwargs
             )
             

@@ -147,11 +147,12 @@ DEBUG=False
         from dotenv import load_dotenv
         load_dotenv()
         
-        required_vars = [
+                         required_vars = [
             'LM_STUDIO_API_BASE',
             'LM_STUDIO_API_KEY', 
             'USE_LOCAL_MODELS',
-            'USE_LMSTUDIO_SDK'
+            'USE_LMSTUDIO_SDK',
+            'USE_REMOTE_LMSTUDIO'
         ]
         
         missing_vars = []
@@ -166,61 +167,103 @@ DEBUG=False
             print("   ✅ Environment variables configured")
     
     def check_lm_studio_setup(self):
-        """Check LM Studio installation and setup"""
+        """Check LM Studio installation and setup (local or remote)"""
         try:
-            # Check if LM Studio Python SDK is available
-            try:
-                import lmstudio
-                print("   ✅ LM Studio Python SDK available")
-                sdk_available = True
-            except ImportError:
-                print("   ❌ LM Studio Python SDK not available")
-                print("   Install with: pip install lmstudio")
-                sdk_available = False
+            from dotenv import load_dotenv
+            load_dotenv()
             
-            # Check if LM Studio CLI is available
-            try:
-                result = subprocess.run(['lms', '--help'], 
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    print("   ✅ LM Studio CLI available")
-                    cli_available = True
-                else:
-                    print("   ❌ LM Studio CLI not working properly")
-                    cli_available = False
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                print("   ⚠️  LM Studio CLI not found in PATH")
-                print("   Install from: https://lmstudio.ai/download")
-                cli_available = False
+            # Check if using remote LM Studio
+            use_remote = os.getenv('USE_REMOTE_LMSTUDIO', 'false').lower() == 'true'
             
-            # Check if LM Studio server is running
-            try:
-                response = requests.get("http://localhost:1234/v1/models", timeout=5)
-                if response.status_code == 200:
-                    print("   ✅ LM Studio server is running")
-                    models = response.json().get('data', [])
-                    print(f"   📊 {len(models)} models available")
-                    server_running = True
-                else:
-                    print("   ⚠️  LM Studio server responded with error")
-                    server_running = False
-            except requests.RequestException:
-                print("   ⚠️  LM Studio server not running")
-                print("   Start with: lms server start")
-                server_running = False
-            
-            # Summary
-            if sdk_available and cli_available and server_running:
-                print("   🎉 LM Studio setup is complete!")
-            elif sdk_available and cli_available:
-                print("   ⚠️  LM Studio ready, but server needs to be started")
-                print("   Run: lms server start")
+            if use_remote:
+                print("   🌐 Checking remote LM Studio server configuration...")
+                self._check_remote_lm_studio()
             else:
-                print("   ❌ LM Studio setup incomplete")
-                self.show_lm_studio_install_instructions()
+                print("   🏠 Checking local LM Studio setup...")
+                self._check_local_lm_studio()
                 
         except Exception as e:
             print(f"   ❌ LM Studio setup check failed: {e}")
+    
+    def _check_remote_lm_studio(self):
+        """Check remote LM Studio server"""
+        remote_url = os.getenv('REMOTE_LMSTUDIO_URL', 'http://your-server:1234/v1')
+        remote_key = os.getenv('REMOTE_LMSTUDIO_API_KEY', 'your-remote-key')
+        
+        if 'your-server' in remote_url or 'your-remote-key' in remote_key:
+            print("   ⚠️  Remote LM Studio configuration not set")
+            print("   Please update REMOTE_LMSTUDIO_URL and REMOTE_LMSTUDIO_API_KEY in .env")
+            return
+        
+        # Test connection to remote server
+        try:
+            test_url = remote_url.replace('/v1', '/v1/models')
+            headers = {'Authorization': f'Bearer {remote_key}'} if remote_key != 'local-key' else {}
+            
+            response = requests.get(test_url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                models = response.json().get('data', [])
+                print(f"   ✅ Remote LM Studio server accessible")
+                print(f"   📊 {len(models)} models available on remote server")
+                print(f"   🌐 URL: {remote_url}")
+            else:
+                print(f"   ❌ Remote server responded with status {response.status_code}")
+        except requests.RequestException as e:
+            print(f"   ❌ Cannot connect to remote LM Studio server: {e}")
+            print(f"   🌐 Attempted URL: {remote_url}")
+    
+    def _check_local_lm_studio(self):
+        """Check local LM Studio installation"""
+        # Check if LM Studio Python SDK is available
+        try:
+            import lmstudio
+            print("   ✅ LM Studio Python SDK available")
+            sdk_available = True
+        except ImportError:
+            print("   ❌ LM Studio Python SDK not available")
+            print("   Install with: pip install lmstudio")
+            sdk_available = False
+        
+        # Check if LM Studio CLI is available
+        try:
+            result = subprocess.run(['lms', '--help'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print("   ✅ LM Studio CLI available")
+                cli_available = True
+            else:
+                print("   ❌ LM Studio CLI not working properly")
+                cli_available = False
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            print("   ⚠️  LM Studio CLI not found in PATH")
+            print("   Install from: https://lmstudio.ai/download")
+            cli_available = False
+        
+        # Check if LM Studio server is running
+        try:
+            response = requests.get("http://localhost:1234/v1/models", timeout=5)
+            if response.status_code == 200:
+                print("   ✅ LM Studio server is running")
+                models = response.json().get('data', [])
+                print(f"   📊 {len(models)} models available")
+                server_running = True
+            else:
+                print("   ⚠️  LM Studio server responded with error")
+                server_running = False
+        except requests.RequestException:
+            print("   ⚠️  LM Studio server not running")
+            print("   Start with: lms server start")
+            server_running = False
+        
+        # Summary
+        if sdk_available and cli_available and server_running:
+            print("   🎉 Local LM Studio setup is complete!")
+        elif sdk_available and cli_available:
+            print("   ⚠️  LM Studio ready, but server needs to be started")
+            print("   Run: lms server start")
+        else:
+            print("   ❌ Local LM Studio setup incomplete")
+            self.show_lm_studio_install_instructions()
     
     def show_lm_studio_install_instructions(self):
         """Show LM Studio installation instructions"""
@@ -290,20 +333,24 @@ DEBUG=False
         print("   1. 🔑 Configure your OpenAI API key in .env:")
         print("      OPENAI_API_KEY=your_actual_key_here")
         print("   ")
-        print("   2. 🚀 Start LM Studio server (if not already running):")
-        print("      lms server start")
+        print("   2. Choose your LM Studio setup:")
+        print("      🏠 Local Setup (requires GPU):")
+        print("         • Start server: lms server start")
+        print("         • Download models: lms get qwen2.5-72b-instruct")
+        print("         • Download models: lms get deepseek-r1-distill-qwen-32b")
         print("   ")
-        print("   3. 📦 Download local models for Phase 2:")
-        print("      lms get qwen2.5-72b-instruct")
-        print("      lms get deepseek-r1-distill-qwen-32b")
+        print("      🌐 Remote Setup (use another server's GPU):")
+        print("         • Set USE_REMOTE_LMSTUDIO=true in .env")
+        print("         • Set REMOTE_LMSTUDIO_URL=http://your-server:1234/v1")
+        print("         • Set REMOTE_LMSTUDIO_API_KEY=your-key (if needed)")
         print("   ")
-        print("   4. 🧪 Test the integration:")
+        print("   3. 🧪 Test the integration:")
         print("      python test_phase2_integration.py --verbose")
         print("   ")
-        print("   5. 🔄 Enable local models when ready:")
+        print("   4. 🔄 Enable local models when ready:")
         print("      Set USE_LOCAL_MODELS=true in .env")
         print("   ")
-        print("   6. 🎯 Run your agents:")
+        print("   5. 🎯 Run your agents:")
         print("      python analyze_projects_multi_agent_v2.py")
 
 
