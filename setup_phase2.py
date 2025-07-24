@@ -147,7 +147,7 @@ DEBUG=False
         from dotenv import load_dotenv
         load_dotenv()
         
-                         required_vars = [
+        required_vars = [
             'LM_STUDIO_API_BASE',
             'LM_STUDIO_API_KEY', 
             'USE_LOCAL_MODELS',

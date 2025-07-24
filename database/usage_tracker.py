@@ -104,22 +104,25 @@ class APIUsageTracker:
         Returns:
             float: Cost in USD from LiteLLM's built-in tracking (0.0 for local models)
         """
-        try:
-            # Phase 2: Check if this was a local model (cost = 0)
-            if hasattr(response, '_hidden_params') and response._hidden_params:
-                if response._hidden_params.get('cost_source') == 'local':
-                    return 0.0  # Local models are free
-                
-                cost = response._hidden_params.get('response_cost', 0.0)
-                if cost and cost > 0:
-                    return float(cost)
+        # Phase 2: Check if this was a local model (cost = 0)
+        if hasattr(response, '_hidden_params') and response._hidden_params:
+            if response._hidden_params.get('cost_source') == 'local':
+                return 0.0  # Local models are free
             
-            # Method 2: Use litellm.completion_cost() helper function
+            cost = response._hidden_params.get('response_cost', 0.0)
+            if cost and cost > 0:
+                return float(cost)
+        
+        # Method 2: Use litellm.completion_cost() helper function
+        try:
             cost = litellm.completion_cost(completion_response=response)
             if cost and cost > 0:
                 return float(cost)
-                
-            # Method 3: Fallback to manual calculation with LiteLLM model pricing
+        except (ValueError, TypeError, AttributeError) as e:
+            print(f"      ⚠️ LiteLLM completion_cost() failed: {e}")
+            
+        # Method 3: Fallback to manual calculation with LiteLLM model pricing
+        try:
             if hasattr(response, 'usage') and response.usage and hasattr(response, 'model'):
                 cost = litellm.completion_cost(
                     model=response.model,
@@ -128,9 +131,8 @@ class APIUsageTracker:
                 )
                 if cost and cost > 0:
                     return float(cost)
-            
-        except Exception as e:
-            print(f"      ⚠️ LiteLLM cost extraction failed: {e}")
+        except (ValueError, TypeError, KeyError) as e:
+            print(f"      ⚠️ LiteLLM manual cost calculation failed: {e}")
         
         return 0.0  # Fallback if all methods fail
 

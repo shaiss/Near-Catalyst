@@ -191,9 +191,8 @@ class NearCatalystRouter:
             response._hidden_params['cost_source'] = 'openai'
             response._hidden_params['local_model_used'] = False
             # Get actual cost from LiteLLM's cost tracking if available
-            if hasattr(response, '_hidden_params'):
-                actual_cost = response._hidden_params.get('response_cost', 0.0)
-                response._hidden_params['response_cost'] = actual_cost
+            actual_cost = response._hidden_params.get('response_cost', 0.0)
+            response._hidden_params['response_cost'] = actual_cost
         
         response._hidden_params['router_tags'] = tags
     

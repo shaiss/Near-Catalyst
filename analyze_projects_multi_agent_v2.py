@@ -341,12 +341,11 @@ def should_skip_project(db_manager, project_name, force_refresh):
             conn.close()
 
 
-def run_parallel_question_analysis(client, project_name, general_research, db_path, benchmark_format='auto'):
+def run_parallel_question_analysis(project_name, general_research, db_path, benchmark_format='auto'):
     """
     Execute all 6 question agents in parallel for maximum efficiency.
     
     Args:
-        client (OpenAI): OpenAI client instance
         project_name (str): Name of the project
         general_research (str): General research context
         db_path (str): Path to SQLite database
@@ -425,12 +424,11 @@ def run_parallel_question_analysis(client, project_name, general_research, db_pa
     return question_results
 
 
-def analyze_single_project(client, db_manager, project_data, system_prompt, args):
+def analyze_single_project(db_manager, project_data, system_prompt, args):
     """
     Analyze a single project using the multi-agent system.
     
     Args:
-        client (OpenAI): OpenAI client instance
         db_manager (DatabaseManager): Database manager
         project_data (dict): Project information from NEAR Catalog
         system_prompt (str): System prompt for LLM
@@ -539,7 +537,7 @@ def analyze_single_project(client, db_manager, project_data, system_prompt, args
             print(f"  📊 Using deep research data for question analysis")
         
         question_results = run_parallel_question_analysis(
-            client, name, research_context, db_manager.db_path, args.benchmark_format
+            name, research_context, db_manager.db_path, args.benchmark_format
         )
         
         # Track question analysis costs
@@ -601,14 +599,13 @@ def process_project_batch(batch_data, batch_num, total_batches):
     Process a batch of projects concurrently.
     
     Args:
-        batch_data (dict): Contains client, db_manager, project_slugs, system_prompt, args
+        batch_data (dict): Contains db_manager, project_slugs, system_prompt, args
         batch_num (int): Current batch number
         total_batches (int): Total number of batches
         
     Returns:
         tuple: (successful_count, total_count)
     """
-    client = batch_data['client']
     db_manager = batch_data['db_manager']
     project_slugs = batch_data['project_slugs']
     system_prompt = batch_data['system_prompt']
@@ -640,7 +637,7 @@ def process_project_batch(batch_data, batch_num, total_batches):
             
             # Analyze the project
             project_data = {'slug': slug, 'detail': detail}
-            return analyze_single_project(client, db_manager, project_data, system_prompt, args)
+            return analyze_single_project(db_manager, project_data, system_prompt, args)
             
         except Exception as e:
             print(f"  ERROR: Failed to process {slug}: {e}")
@@ -878,7 +875,6 @@ Database management:
     print(f"Split into {total_batches} batches of {batch_size} projects each")
     
     batch_data = {
-        'client': None, # LiteLLM handles API calls directly, so no client object needed here
         'db_manager': db_manager,
         'system_prompt': system_prompt,
         'args': args
