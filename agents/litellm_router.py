@@ -179,16 +179,21 @@ class NearCatalystRouter:
         if not hasattr(response, '_hidden_params'):
             response._hidden_params = {}
         
-        # Determine if local or OpenAI was used based on model ID in response
-        model_id = getattr(response, 'model', '')
+        # Determine if local or OpenAI was used based on the tags used in the request
+        # This is more reliable than parsing model IDs from the response
+        local_used = 'local' in tags
         
-        if '-local' in model_id or 'lm_studio' in model_id:
+        if local_used:
             response._hidden_params['cost_source'] = 'local'
             response._hidden_params['response_cost'] = 0.0  # Local is free
             response._hidden_params['local_model_used'] = True
         else:
             response._hidden_params['cost_source'] = 'openai'
             response._hidden_params['local_model_used'] = False
+            # Get actual cost from LiteLLM's cost tracking if available
+            if hasattr(response, '_hidden_params'):
+                actual_cost = response._hidden_params.get('response_cost', 0.0)
+                response._hidden_params['response_cost'] = actual_cost
         
         response._hidden_params['router_tags'] = tags
     

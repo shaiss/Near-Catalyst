@@ -577,16 +577,15 @@ class DatabaseManager:
             enhanced_prompt = deep_research_result.get("enhanced_prompt", "")
             
             cursor.execute('''INSERT OR REPLACE INTO deep_research_data 
-                             (project_name, slug, research_data, sources, success, enabled, error, 
+                             (project_name, slug, research_data, sources, success, enabled, 
                               elapsed_time, tool_calls_made, estimated_cost, enhanced_prompt, 
                               created_at, updated_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                           (project_name, slug, 
                            deep_research_result.get("content", ""),
                            json.dumps(deep_research_result.get("sources", [])),
                            deep_research_result.get("success", False),
                            deep_research_result.get("enabled", False),
-                           deep_research_result.get("error", ""),
                            deep_research_result.get("elapsed_time", 0),
                            deep_research_result.get("tool_calls_made", 0),
                            deep_research_result.get("estimated_cost", 0),
@@ -617,16 +616,15 @@ class DatabaseManager:
             
             if result:
                 return {
-                    "project_name": result[0],
-                    "slug": result[1],
-                    "research_data": result[2],
-                    "sources": json.loads(result[3]) if result[3] else [],
-                    "success": result[4],
-                    "enabled": result[5],
-                    "error": result[6],
-                    "elapsed_time": result[7],
-                    "tool_calls_made": result[8],
-                    "estimated_cost": result[9],
+                    "project_name": result[1],
+                    "slug": result[2],
+                    "research_data": result[3],
+                    "sources": json.loads(result[4]) if result[4] else [],
+                    "elapsed_time": result[5],
+                    "tool_calls_made": result[6],
+                    "estimated_cost": result[7],
+                    "success": result[8],
+                    "enabled": result[9],
                     "enhanced_prompt": result[10],
                     "created_at": result[11],
                     "updated_at": result[12]
