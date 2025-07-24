@@ -30,7 +30,7 @@ class QuestionAgent:
     automatic local model routing with fallbacks.
     """
     
-    def __init__(self, client=None, db_manager=None, usage_tracker=None):
+    def __init__(self, db_manager=None, usage_tracker=None):
         """Initialize the question agent."""
         self.timeout = TIMEOUTS['question_agent']
         self.analysis_timeout = TIMEOUTS['analysis_agent']

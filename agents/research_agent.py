@@ -17,7 +17,7 @@ class ResearchAgent:
     using LiteLLM Router with automatic local model routing and fallbacks.
     """
     
-    def __init__(self, client=None, db_manager=None):
+    def __init__(self, db_manager=None):
         """Initialize the research agent."""
         self.timeout = TIMEOUTS['research_agent']
         self.db_manager = db_manager

@@ -113,16 +113,14 @@ class APIUsageTracker:
             if cost and cost > 0:
                 return float(cost)
         
-        # Method 2: Use litellm.completion_cost() helper function
+        # Consolidated cost extraction using single litellm.completion_cost() approach
         try:
+            # Primary method: Use response object directly (preferred)
             cost = litellm.completion_cost(completion_response=response)
             if cost and cost > 0:
                 return float(cost)
-        except (ValueError, TypeError, AttributeError) as e:
-            print(f"      ⚠️ LiteLLM completion_cost() failed: {e}")
-            
-        # Method 3: Fallback to manual calculation with LiteLLM model pricing
-        try:
+                
+            # Fallback: Manual calculation if response object method fails
             if hasattr(response, 'usage') and response.usage and hasattr(response, 'model'):
                 cost = litellm.completion_cost(
                     model=response.model,
@@ -131,8 +129,19 @@ class APIUsageTracker:
                 )
                 if cost and cost > 0:
                     return float(cost)
-        except (ValueError, TypeError, KeyError) as e:
-            print(f"      ⚠️ LiteLLM manual cost calculation failed: {e}")
+            
+        except ValueError as e:
+            # Expected: Invalid model name or unsupported model
+            print(f"      ℹ️ Cost calculation skipped (unsupported model): {e}")
+        except (TypeError, AttributeError) as e:
+            # Unexpected: Malformed response structure
+            print(f"      ⚠️ Cost extraction failed (malformed response): {e}")
+        except KeyError as e:
+            # Expected: Missing usage data for free/local models
+            print(f"      ℹ️ Cost calculation skipped (missing usage data): {e}")
+        except Exception as e:
+            # Unexpected: Log for investigation but don't crash
+            print(f"      🚨 Unexpected cost calculation error: {e}")
         
         return 0.0  # Fallback if all methods fail
 

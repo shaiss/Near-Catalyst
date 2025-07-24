@@ -360,7 +360,7 @@ def run_parallel_question_analysis(project_name, general_research, db_path, benc
     
     # Initialize question agent with usage tracking
     db_manager = DatabaseManager(db_path)
-    question_agent = QuestionAgent(None, db_manager)
+    question_agent = QuestionAgent(db_manager)
     
     # Use ThreadPoolExecutor for parallel execution
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
@@ -458,7 +458,7 @@ def analyze_single_project(db_manager, project_data, system_prompt, args):
         
         # Step 1: General Research Agent
         print(f"  Running general research agent...")
-        research_agent = ResearchAgent(None, db_manager)
+        research_agent = ResearchAgent(db_manager)
         
         # Fetch full project details for research context
         catalog_data = fetch_full_project_details(slug)
@@ -487,7 +487,7 @@ def analyze_single_project(db_manager, project_data, system_prompt, args):
         deep_research_result = None
         if args.deep_research and research_result["success"]:
             print(f"  🔬 Deep research requested...")
-            deep_research_agent = DeepResearchAgent(None, db_manager)
+            deep_research_agent = DeepResearchAgent(db_manager)
             
             # Check if deep research is enabled via config OR command line flag (flag overrides config)
             config_enabled = deep_research_agent.is_enabled()
@@ -550,7 +550,7 @@ def analyze_single_project(db_manager, project_data, system_prompt, args):
             return True
 
         # Step 3: Summary Agent
-        summary_agent = SummaryAgent(None, db_manager)
+        summary_agent = SummaryAgent(db_manager)
         summary_result = summary_agent.analyze(
             name, research_context, question_results, system_prompt, args.benchmark_format
         )
@@ -613,7 +613,7 @@ def process_project_batch(batch_data, batch_num, total_batches):
     
     # Track deep research override status for the completion summary
     if args.deep_research and not hasattr(args, '_deep_research_was_overridden'):
-        deep_research_agent_temp = DeepResearchAgent(None)
+        deep_research_agent_temp = DeepResearchAgent()
         args._deep_research_was_overridden = not deep_research_agent_temp.is_enabled()
     
     print(f"\n📦 Processing batch {batch_num}/{total_batches} ({len(project_slugs)} projects)")
@@ -845,7 +845,7 @@ Database management:
     
     # Show deep research status
     if args.deep_research:
-        deep_research_agent = DeepResearchAgent(None)  # Just for config checking
+        deep_research_agent = DeepResearchAgent()  # Just for config checking
         config_enabled = deep_research_agent.is_enabled()
         if config_enabled:
             print(f"🔬 Deep research: ENABLED in config (${deep_research_agent.get_estimated_cost():.2f} per project)")
@@ -902,7 +902,7 @@ Database management:
     
     # Show deep research summary if enabled
     if args.deep_research:
-        deep_research_agent = DeepResearchAgent(None)
+        deep_research_agent = DeepResearchAgent()
         config_enabled = deep_research_agent.is_enabled()
         estimated_total_cost = successful_analyses * deep_research_agent.get_estimated_cost()
         

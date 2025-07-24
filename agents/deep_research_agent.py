@@ -31,7 +31,7 @@ class DeepResearchAgent:
     4. Returns comprehensive analyst-level research
     """
     
-    def __init__(self, client=None, db_manager=None, usage_tracker=None):
+    def __init__(self, db_manager=None, usage_tracker=None):
         """Initialize the deep research agent."""
         self.config = DEEP_RESEARCH_CONFIG
         self.timeout = TIMEOUTS['deep_research_agent']
@@ -70,42 +70,7 @@ class DeepResearchAgent:
         print(f"      🔬 Conducting deep research on {project_name}...")
         
         try:
-            total_cost = 0.0
-            
-            # Step 1: Prime with GPT-4.1 for enhanced context
-            print(f"      📋 Priming analysis with {self.config['priming_model']}...")
-            priming_result = self._prime_analysis(project_name, general_research_content)
-            total_cost += priming_result.get('cost', 0.0)
-            
-            if not priming_result['success']:
-                return priming_result
-            
-            # Step 2: Conduct deep research with o4-mini
-            print(f"      🧠 Deep analysis with {self.config['model']}...")
-            deep_analysis_result = self._conduct_deep_analysis(
-                project_name, 
-                general_research_content, 
-                priming_result['content']
-            )
-            total_cost += deep_analysis_result.get('cost', 0.0)
-            
-            if deep_analysis_result['success']:
-                print(f"      ✅ Deep research completed - Cost: ${total_cost:.4f}")
-                
-                # Combine results
-                return {
-                    "success": True,
-                    "content": deep_analysis_result['content'],
-                    "sources": ["deep_research_analysis"],
-                    "enabled": True,
-                    "priming_cost": priming_result.get('cost', 0.0),
-                    "analysis_cost": deep_analysis_result.get('cost', 0.0),
-                    "total_cost": total_cost,
-                    "elapsed_time": deep_analysis_result.get('elapsed_time', 0),
-                    "enhanced_prompt": True
-                }
-            else:
-                return deep_analysis_result
+            return self._run_analysis_workflow(project_name, general_research_content, context)
                 
         except Exception as e:
             error_msg = f"Deep research failed: {str(e)}"
@@ -119,6 +84,71 @@ class DeepResearchAgent:
                 "error": error_msg,
                 "cost": 0.0
             }
+
+    def _run_analysis_workflow(self, project_name, general_research_content, context=None):
+        """
+        Execute the deep research analysis workflow.
+        
+        Args:
+            project_name: Name of the project to analyze
+            general_research_content: Content from general research agent
+            context: Additional context (optional)
+            
+        Returns:
+            Dict with workflow results and cost information
+        """
+        total_cost = 0.0
+        
+        # Step 1: Prime with GPT-4.1 for enhanced context
+        priming_model = self.config.get('priming_model', 'gpt-4.1')
+        print(f"      📋 Priming analysis with {priming_model}...")
+        priming_result = self._prime_analysis(project_name, general_research_content)
+        total_cost += priming_result.get('cost', 0.0)
+        
+        if not priming_result['success']:
+            return priming_result
+        
+        # Step 2: Conduct deep research with o4-mini
+        analysis_model = self.config.get('model', 'o4-mini')
+        print(f"      🧠 Deep analysis with {analysis_model}...")
+        deep_analysis_result = self._conduct_deep_analysis(
+            project_name, 
+            general_research_content, 
+            priming_result['content']
+        )
+        total_cost += deep_analysis_result.get('cost', 0.0)
+        
+        if deep_analysis_result['success']:
+            print(f"      ✅ Deep research completed - Cost: ${total_cost:.4f}")
+            
+            # Format and return combined results
+            return self._format_analysis_results(priming_result, deep_analysis_result, total_cost)
+        else:
+            return deep_analysis_result
+
+    def _format_analysis_results(self, priming_result, deep_analysis_result, total_cost):
+        """
+        Format the final analysis results.
+        
+        Args:
+            priming_result: Result from priming step
+            deep_analysis_result: Result from deep analysis step
+            total_cost: Combined cost of both steps
+            
+        Returns:
+            Dict with formatted results
+        """
+        return {
+            "success": True,
+            "content": deep_analysis_result['content'],
+            "sources": ["deep_research_analysis"],
+            "enabled": True,
+            "priming_cost": priming_result.get('cost', 0.0),
+            "analysis_cost": deep_analysis_result.get('cost', 0.0),
+            "total_cost": total_cost,
+            "elapsed_time": deep_analysis_result.get('elapsed_time', 0),
+            "enhanced_prompt": True
+        }
     
     def _prime_analysis(self, project_name, general_research):
         """
@@ -155,14 +185,18 @@ Output Format:
         try:
             # Use LiteLLM Router for priming
             response = completion(
-                model=self.config['priming_model'],
+                model=self.config.get('priming_model', 'gpt-4.1'),
                 messages=[{"role": "user", "content": priming_prompt}],
                 temperature=0.1,
                 max_tokens=1500,
                 timeout=300  # 5 minutes for priming
             )
             
-            content = response.choices[0].message.content
+            # Safely extract content with validation
+            if response.choices and len(response.choices) > 0 and hasattr(response.choices[0], 'message'):
+                content = response.choices[0].message.content
+            else:
+                content = ""  # fallback for malformed response
             cost = 0.0
             
             # Extract cost and routing information
@@ -264,7 +298,7 @@ Provide a comprehensive, analyst-level report that serves as the definitive asse
         try:
             # Use LiteLLM Router for deep analysis
             response = completion(
-                model=self.config['model'],
+                model=self.config.get('model', 'o4-mini'),
                 messages=[{"role": "user", "content": deep_analysis_prompt}],
                 temperature=0.1,
                 max_tokens=8000,  # Large output for comprehensive analysis
@@ -272,7 +306,11 @@ Provide a comprehensive, analyst-level report that serves as the definitive asse
             )
             
             elapsed_time = time.time() - start_time
-            content = response.choices[0].message.content
+            # Safely extract content with validation
+            if response.choices and len(response.choices) > 0 and hasattr(response.choices[0], 'message'):
+                content = response.choices[0].message.content
+            else:
+                content = ""  # fallback for malformed response
             cost = 0.0
             
             # Extract cost and routing information

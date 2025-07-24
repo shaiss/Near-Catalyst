@@ -18,7 +18,7 @@ class SummaryAgent:
     using LiteLLM Router with automatic local model routing and fallbacks.
     """
     
-    def __init__(self, client=None, db_manager=None, usage_tracker=None):
+    def __init__(self, db_manager=None, usage_tracker=None):
         """Initialize the summary agent."""
         self.timeout = TIMEOUTS['summary_agent']
         self.db_manager = db_manager
