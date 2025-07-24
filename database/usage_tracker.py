@@ -172,7 +172,9 @@ class APIUsageTracker:
             del kwargs['input']
         
         try:
-            response = litellm.completion(model=model, **kwargs)
+            # Use our LiteLLM router instead of direct litellm.completion for provider support
+            from agents.litellm_router import completion
+            response = completion(model=model, **kwargs)
             success = True
             
         except Exception as e:

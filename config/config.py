@@ -103,32 +103,54 @@ DEEP_RESEARCH_CONFIG = {
     ]
 }
 
-# Question Agent Two-Step Configuration
-# Step 1: Research with web search, Step 2: Analysis with reasoning
+# Question Agent Provider-Specific Configuration
+# Supports both OpenAI (with web search) and Local (with DDGS) providers
 QUESTION_AGENT_CONFIG = {
-    # Research Step: Web search for gathering information
-    'research_model': {
-        'production': 'gpt-4o-search-preview',      # Web search enabled for data gathering
-        'development': 'gpt-4o-search-preview',     # Consistent across environments
-        'max_output_tokens': 4000,   # Standard output tokens for search model
-        'use_reasoning': False,      # Research step doesn't need reasoning
-        'enable_web_search': True    # REQUIRED for information gathering
+    # OpenAI Provider Configuration
+    'openai': {
+        'research_model': {
+            'production': 'gpt-4o-search-preview',      # OpenAI web search enabled
+            'development': 'gpt-4o-search-preview',     # Consistent across environments
+            'max_output_tokens': 4000,
+            'use_reasoning': False,
+            'enable_web_search': True,    # Uses OpenAI web search
+            'tags': ['openai']           # LiteLLM router tags
+        },
+        'reasoning_model': {
+            'production': 'o4-mini',     # OpenAI reasoning model
+            'development': 'o4-mini',    # Consistent model
+            'effort': 'medium',
+            'max_output_tokens': 8000,
+            'use_reasoning': True,
+            'include_reasoning_summary': True,
+            'reasoning_effort': 'medium',
+            'tags': ['openai']           # LiteLLM router tags
+        }
     },
     
-    # Analysis Step: Reasoning model for deep analysis of research
-    'reasoning_model': {
-        'production': 'o4-mini',    # Cost-effective reasoning model for production
-        'development': 'o4-mini',   # Same model for dev/testing (consistent & affordable)
-        'effort': 'medium',         # Balance between speed and reasoning quality
-        'max_output_tokens': 8000,  # Higher tokens for reasoning analysis
-        'use_reasoning': True,      # Enable reasoning tokens extraction
-        'include_reasoning_summary': True,  # Include reasoning summary in response
-        'reasoning_effort': 'medium'  # Reasoning effort level
+    # Local Provider Configuration  
+    'local': {
+        'research_model': {
+            'production': 'qwen2.5-72b-instruct',     # Available model in LM Studio (qwen3-235b-a22b pending)
+            'development': 'qwen2.5-coder-32b',       # Lighter model for dev
+            'max_output_tokens': 4000,
+            'use_reasoning': False,
+            'enable_web_search': True,    # Uses DDGS instead of OpenAI
+            'tags': ['local']            # LiteLLM router tags
+        },
+        'reasoning_model': {
+            'production': 'deepseek-r1-distill-qwen-32b',  # Local reasoning model
+            'development': 'qwen2.5-coder-32b',            # Consistent local model
+            'effort': 'medium',
+            'max_output_tokens': 8000,
+            'use_reasoning': True,
+            'include_reasoning_summary': True,
+            'reasoning_effort': 'medium',
+            'tags': ['local']            # LiteLLM router tags
+        }
     },
     
-    # Fallback configuration
-    'fallback_research_model': 'gpt-4o',           # Fallback if search model unavailable
-    'fallback_reasoning_model': 'o3-mini',         # Fallback reasoning model (cheaper than o1)
+    # Shared configuration (applies to all providers)
     'use_web_search': True,       # Enable web search for data enrichment (REQUIRED)
     
     # Context optimization for two-step process
@@ -183,8 +205,8 @@ RECOMMENDATIONS = {
 }
 
 # Phase 2: LiteLLM + LM Studio SDK Configuration
+# NOTE: Provider selection is ONLY via --provider CLI parameter, not environment variables
 LITELLM_CONFIG = {
-    'use_local_models': os.getenv('USE_LOCAL_MODELS', 'false').lower() == 'true',
     'use_lmstudio_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
     
     # LM Studio Server Configuration (Local vs Remote)

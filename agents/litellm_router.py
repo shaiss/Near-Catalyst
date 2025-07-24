@@ -22,16 +22,19 @@ class NearCatalystRouter:
     LiteLLM Router configured for NEAR Catalyst Framework with local/OpenAI fallbacks
     """
     
-    def __init__(self):
+    def __init__(self, provider='openai'):
+        """Initialize router with explicit provider selection (overrides config)."""
+        self.provider = provider
         self.config = LITELLM_CONFIG
         self.endpoint_config = get_lmstudio_endpoint()
         self.router = None
-        self.use_local_models = self.config.get('use_local_models', False)
+        self.use_local_models = (provider == 'local')
         
         # Initialize router with model configuration
         self._setup_router()
         
         print(f"🔄 NEAR Catalyst Router initialized:")
+        print(f"   Provider: {provider}")
         print(f"   Local models: {'enabled' if self.use_local_models else 'disabled'}")
         print(f"   LM Studio: {self.endpoint_config['url']}")
         print(f"   Default tags: {self._get_default_tags()}")
@@ -234,25 +237,29 @@ class NearCatalystRouter:
         return health
 
 
-# Global router instance (singleton pattern)
+# Global router instance (singleton pattern with provider support)
 _router_instance = None
+_current_provider = None
 
-def get_router() -> NearCatalystRouter:
-    """Get global router instance (singleton)"""
-    global _router_instance
+def get_router(provider='openai') -> NearCatalystRouter:
+    """Get global router instance (singleton) with provider support"""
+    global _router_instance, _current_provider
     
-    if _router_instance is None:
-        _router_instance = NearCatalystRouter()
+    # Create new router if provider changed or no router exists
+    if _router_instance is None or _current_provider != provider:
+        _router_instance = NearCatalystRouter(provider)
+        _current_provider = provider
     
     return _router_instance
 
-def completion(model: str, messages: List[Dict], **kwargs) -> Any:
+def completion(model: str, messages: List[Dict], provider='openai', **kwargs) -> Any:
     """
-    Convenience function for router completion
+    Convenience function for router completion with provider support
     
     Usage:
         from agents.litellm_router import completion
-        response = completion("gpt-4.1", messages)
+        response = completion("gpt-4.1", messages, provider='openai')
+        response = completion("qwen2.5-72b-instruct", messages, provider='local')
     """
-    router = get_router()
+    router = get_router(provider)
     return router.completion(model, messages, **kwargs) 

@@ -17,10 +17,11 @@ class ResearchAgent:
     using LiteLLM Router with automatic local model routing and fallbacks.
     """
     
-    def __init__(self, db_manager=None):
-        """Initialize the research agent."""
+    def __init__(self, db_manager=None, provider='openai'):
+        """Initialize the research agent with provider selection."""
         self.timeout = TIMEOUTS['research_agent']
         self.db_manager = db_manager
+        self.provider = provider
         
     def analyze(self, project_name, context):
         """
@@ -82,13 +83,14 @@ Focus on discovering whether this could unlock new possibilities for NEAR develo
         try:
             print(f"      🔍 Researching {project_name} with LiteLLM Router...")
             
-            # Use LiteLLM Router for automatic local model routing and fallbacks
+            # Use LiteLLM Router with provider-specific routing
             response = completion(
                 model="gpt-4.1",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=4000,
-                timeout=self.timeout
+                timeout=self.timeout,
+                provider=self.provider
             )
             
             content = response.choices[0].message.content

@@ -13,6 +13,8 @@ import json
 import os
 from datetime import datetime
 import argparse
+import socket
+import random
 
 app = Flask(__name__)
 CORS(app)
@@ -20,6 +22,42 @@ CORS(app)
 # Configuration
 DATABASE_PATH = os.getenv('DATABASE_PATH', 'project_analyses_multi_agent.db')
 FRONTEND_DIR = 'frontend'
+
+def is_port_available(host, port):
+    """Check if a port is available on the given host"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            result = sock.connect_ex((host, port))
+            return result != 0  # Port is available if connection fails
+    except Exception:
+        return False
+
+def find_available_port(host, preferred_port=None, port_range=(8000, 8999)):
+    """
+    Find an available port, preferring the specified port if available,
+    otherwise choosing a random port in the specified range.
+    """
+    # First try the preferred port if specified
+    if preferred_port and is_port_available(host, preferred_port):
+        return preferred_port
+    
+    # If preferred port is not available or not specified, try random ports in range
+    start_port, end_port = port_range
+    attempts = 0
+    max_attempts = 50
+    
+    while attempts < max_attempts:
+        # Choose a random port in the range
+        random_port = random.randint(start_port, end_port)
+        
+        if is_port_available(host, random_port):
+            return random_port
+        
+        attempts += 1
+    
+    # If we can't find an available port in the range, raise an exception
+    raise RuntimeError(f"Could not find an available port in range {start_port}-{end_port} after {max_attempts} attempts")
 
 def get_db_connection():
     """Get database connection with error handling"""
@@ -138,25 +176,44 @@ def get_project_details(project_name):
             conn.close()
             return jsonify({'error': 'Project not found'}), 404
         
-        # Get question analyses
-        cursor.execute('''
-            SELECT question_id, question_key, analysis, score, confidence, sources, research_data
-            FROM question_analyses 
-            WHERE project_name = ?
-            ORDER BY question_id
-        ''', (project_name,))
+        # Get question analyses from cache tables (FIXED: reconstruct cache keys properly)
+        import hashlib
+        
+        # Define the diagnostic questions to reconstruct cache keys
+        diagnostic_questions = [
+            {"id": 1, "question": "Gap-Filler?"},
+            {"id": 2, "question": "New Proof-Points?"},
+            {"id": 3, "question": "Clear Story?"},
+            {"id": 4, "question": "Shared Audience, Different Function?"},
+            {"id": 5, "question": "Low-Friction Integration?"},
+            {"id": 6, "question": "Hands-On Support?"}
+        ]
         
         question_analyses = []
-        for q_row in cursor.fetchall():
-            question_analyses.append({
-                'question_id': q_row['question_id'],
-                'question_key': q_row['question_key'],
-                'analysis': q_row['analysis'],
-                'score': q_row['score'],
-                'confidence': q_row['confidence'],
-                'sources': json.loads(q_row['sources']) if q_row['sources'] else [],
-                'research_data': q_row['research_data']
-            })
+        for q_config in diagnostic_questions:
+            # Reconstruct cache key exactly as done in QuestionAgent
+            cache_input = f"analysis_q{q_config['id']}:{project_name}:{q_config['question']}"
+            cache_key = hashlib.md5(cache_input.encode()).hexdigest()
+            
+            cursor.execute('SELECT result_data FROM question_analysis WHERE cache_key = ?', (cache_key,))
+            cache_row = cursor.fetchone()
+            
+            if cache_row:
+                try:
+                    # Parse cached question analysis data
+                    analysis_data = json.loads(cache_row['result_data'])
+                    question_analyses.append({
+                        'question_id': analysis_data.get('question_id'),
+                        'question_key': analysis_data.get('question', ''),
+                        'analysis': analysis_data.get('analysis', ''),
+                        'score': analysis_data.get('score'),
+                        'confidence': analysis_data.get('confidence', ''),
+                        'sources': [],  # Sources are in research cache
+                        'research_data': None  # Will get from research cache if needed
+                    })
+                except (json.JSONDecodeError, KeyError) as e:
+                    print(f"Error parsing question analysis cache for Q{q_config['id']}: {e}")
+                    continue
 
         # Get deep research data
         cursor.execute('''
@@ -473,9 +530,10 @@ def check_database():
 def main():
     parser = argparse.ArgumentParser(description='NEAR Catalyst Framework Dashboard Server')
     parser.add_argument('--host', default='127.0.0.1', help='Host address (default: 127.0.0.1)')
-    parser.add_argument('--port', type=int, default=5000, help='Port number (default: 5000)')
+    parser.add_argument('--port', type=int, default=5000, help='Port number (default: 5000, auto-detects if occupied)')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     parser.add_argument('--check-db', action='store_true', help='Check database and exit')
+    parser.add_argument('--force-port', action='store_true', help='Force the specified port without auto-detection')
     
     args = parser.parse_args()
     
@@ -498,8 +556,41 @@ def main():
         print("   Make sure frontend files are in the correct location.")
         return
     
-    print(f"\n🌐 Server starting on http://{args.host}:{args.port}")
-    print(f"📊 Dashboard: http://{args.host}:{args.port}")
+    # Smart port detection
+    try:
+        if args.force_port:
+            # Force the specified port without checking
+            actual_port = args.port
+            print(f"🔧 Forcing port {actual_port} (--force-port specified)")
+        else:
+            # Try to find an available port
+            if args.port == 5000:
+                # Default port - try 8080 first, then random in 8000 range
+                print(f"🔍 Checking port availability...")
+                if is_port_available(args.host, 8080):
+                    actual_port = 8080
+                    print(f"✓ Using port {actual_port} (8080 available)")
+                elif is_port_available(args.host, args.port):
+                    actual_port = args.port
+                    print(f"✓ Using port {actual_port} (original port available)")
+                else:
+                    actual_port = find_available_port(args.host, port_range=(8000, 8999))
+                    print(f"🎲 Auto-selected port {actual_port} (original port occupied)")
+            else:
+                # Custom port specified - try it first, then fall back to 8000 range
+                actual_port = find_available_port(args.host, preferred_port=args.port, port_range=(8000, 8999))
+                if actual_port != args.port:
+                    print(f"⚠️  Port {args.port} occupied, auto-selected port {actual_port}")
+                else:
+                    print(f"✓ Using requested port {actual_port}")
+    
+    except RuntimeError as e:
+        print(f"\n❌ Port detection failed: {e}")
+        print("   Try using --force-port to bypass auto-detection")
+        return
+    
+    print(f"\n🌐 Server starting on http://{args.host}:{actual_port}")
+    print(f"📊 Dashboard: http://{args.host}:{actual_port}")
     print(f"🔗 API endpoints:")
     print(f"   • GET /api/projects - List all projects")
     print(f"   • GET /api/project/<name> - Project details")
@@ -512,7 +603,7 @@ def main():
     try:
         app.run(
             host=args.host,
-            port=args.port,
+            port=actual_port,
             debug=args.debug,
             threaded=True
         )

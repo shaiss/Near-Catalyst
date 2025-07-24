@@ -89,6 +89,9 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import litellm
 
+# Import usage tracker for local model tracking
+from database.usage_tracker import APIUsageTracker
+
 # Set up LiteLLM cost tracking
 class CostTracker:
     """Simple cost tracker using LiteLLM's built-in cost calculation"""
@@ -341,7 +344,7 @@ def should_skip_project(db_manager, project_name, force_refresh):
             conn.close()
 
 
-def run_parallel_question_analysis(project_name, general_research, db_path, benchmark_format='auto'):
+def run_parallel_question_analysis(project_name, general_research, db_path, benchmark_format='auto', provider='openai'):
     """
     Execute all 6 question agents in parallel for maximum efficiency.
     
@@ -350,6 +353,7 @@ def run_parallel_question_analysis(project_name, general_research, db_path, benc
         general_research (str): General research context
         db_path (str): Path to SQLite database
         benchmark_format (str): Benchmark format preference
+        provider (str): AI provider ('openai' or 'local')
         
     Returns:
         list: Results from all question agents, sorted by question ID
@@ -358,9 +362,10 @@ def run_parallel_question_analysis(project_name, general_research, db_path, benc
     question_results = []
     start_time = time.time()
     
-    # Initialize question agent with usage tracking
+    # Initialize question agent with provider-specific configuration and usage tracking
     db_manager = DatabaseManager(db_path)
-    question_agent = QuestionAgent(db_manager)
+    usage_tracker = APIUsageTracker(db_manager=db_manager)
+    question_agent = QuestionAgent(db_manager, usage_tracker, provider=provider)
     
     # Use ThreadPoolExecutor for parallel execution
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
@@ -458,7 +463,7 @@ def analyze_single_project(db_manager, project_data, system_prompt, args):
         
         # Step 1: General Research Agent
         print(f"  Running general research agent...")
-        research_agent = ResearchAgent(db_manager)
+        research_agent = ResearchAgent(db_manager, provider=args.provider)
         
         # Fetch full project details for research context
         catalog_data = fetch_full_project_details(slug)
@@ -537,7 +542,7 @@ def analyze_single_project(db_manager, project_data, system_prompt, args):
             print(f"  📊 Using deep research data for question analysis")
         
         question_results = run_parallel_question_analysis(
-            name, research_context, db_manager.db_path, args.benchmark_format
+            name, research_context, db_manager.db_path, args.benchmark_format, args.provider
         )
         
         # Track question analysis costs
@@ -550,7 +555,7 @@ def analyze_single_project(db_manager, project_data, system_prompt, args):
             return True
 
         # Step 3: Summary Agent
-        summary_agent = SummaryAgent(db_manager)
+        summary_agent = SummaryAgent(db_manager, provider=args.provider)
         summary_result = summary_agent.analyze(
             name, research_context, question_results, system_prompt, args.benchmark_format
         )
@@ -563,7 +568,7 @@ def analyze_single_project(db_manager, project_data, system_prompt, args):
         cursor.execute('''INSERT OR REPLACE INTO final_summaries 
                          (project_name, slug, summary, total_score, recommendation, success, error, created_at, updated_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                      (name, slug, summary_result["summary"], summary_result["total_score"], 
+                      (name, slug, summary_result["content"], summary_result["total_score"], 
                        summary_result["recommendation"], summary_result["success"], 
                        summary_result.get("error"), datetime.now().isoformat(), datetime.now().isoformat()))
         conn.commit()
@@ -711,8 +716,9 @@ def main():
         epilog="""
 Examples:
   python analyze_projects_multi_agent_v2.py --limit 5
-  python analyze_projects_multi_agent_v2.py --research-only --limit 10
-  python analyze_projects_multi_agent_v2.py --force-refresh --threads 3
+  python analyze_projects_multi_agent_v2.py --provider local --limit 3
+  python analyze_projects_multi_agent_v2.py --provider openai --research-only --limit 10
+  python analyze_projects_multi_agent_v2.py --provider local --force-refresh --threads 3
   python analyze_projects_multi_agent_v2.py --threads 8 --limit 50
   python analyze_projects_multi_agent_v2.py --deep-research --limit 3
   python analyze_projects_multi_agent_v2.py --deep-research --research-only --limit 1
@@ -727,6 +733,8 @@ Database management:
   python analyze_projects_multi_agent_v2.py --clear project1 project2 project3
         """
     )
+    parser.add_argument('--provider', choices=['openai', 'local'], default='openai',
+                       help='AI provider: openai (OpenAI models with web search) or local (LM Studio + DDGS) (default: openai)')
     parser.add_argument('--limit', type=int, default=None, 
                        help='Number of projects to process (0 for no limit)')
     parser.add_argument('--threads', type=int, default=BATCH_PROCESSING_CONFIG['default_batch_size'],

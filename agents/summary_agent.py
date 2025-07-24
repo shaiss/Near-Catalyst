@@ -18,13 +18,14 @@ class SummaryAgent:
     using LiteLLM Router with automatic local model routing and fallbacks.
     """
     
-    def __init__(self, db_manager=None, usage_tracker=None):
-        """Initialize the summary agent."""
+    def __init__(self, db_manager=None, usage_tracker=None, provider='openai'):
+        """Initialize the summary agent with provider selection."""
         self.timeout = TIMEOUTS['summary_agent']
         self.db_manager = db_manager
+        self.provider = provider
 
-    def synthesize(self, project_name: str, general_research: str, question_analyses: List[Dict], 
-                  benchmark_format: str = 'auto') -> Dict:
+    def analyze(self, project_name: str, general_research: str, question_analyses: List[Dict], 
+               system_prompt: str = None, benchmark_format: str = 'auto') -> Dict:
         """
         Synthesize all analysis results into a final hackathon catalyst recommendation.
         
@@ -102,13 +103,14 @@ Synthesize with authority and precision. This recommendation will drive partners
         try:
             print(f"  📊 Generating final summary with LiteLLM Router...")
             
-            # Use LiteLLM Router for automatic local model routing and fallbacks
+            # Use LiteLLM Router with provider-specific routing
             response = completion(
                 model="gpt-4.1",
                 messages=[{"role": "user", "content": synthesis_prompt}],
                 temperature=0.1,
                 max_tokens=2000,
-                timeout=self.timeout
+                timeout=self.timeout,
+                provider=self.provider
             )
             
             content = response.choices[0].message.content

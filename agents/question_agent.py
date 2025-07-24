@@ -1,26 +1,24 @@
-# agents/question_agent.py
 """
-Question Agent for NEAR Catalyst Framework
-
-This agent evaluates specific diagnostic questions to assess hackathon catalyst potential,
-focusing on discovering co-creation partners that unlock developer potential during hackathons.
-
-ENHANCED WITH REASONING MODELS:
-- Uses o3 (production) or o4-mini (development) for complex multi-source analysis
-- Unified completion API via LiteLLM Router with automatic local model routing and fallbacks
-- Intelligent context optimization and token usage tracking
-- Fallback to GPT-4.1 if reasoning models are unavailable
+QuestionAgent - Six Diagnostic Questions Analysis
+Handles 6 parallel question analyses for partnership evaluation
+Supports two-step workflow: Research → Analysis
 """
 
-import json
-import sqlite3
 import hashlib
-import time
+import json
+import logging
 import os
 from datetime import datetime
+from typing import Dict, Any, Optional, List
 
-from config.config import TIMEOUTS, PARALLEL_CONFIG, QUESTION_AGENT_CONFIG, format_benchmark_examples_for_prompt, get_framework_principles
+# Import completion function and LiteLLM for function calling
 from agents.litellm_router import completion
+import litellm
+
+# Import web search functionality for local models
+from agents.web_search import WEB_SEARCH_TOOLS, AVAILABLE_FUNCTIONS
+
+from config.config import QUESTION_AGENT_CONFIG, format_benchmark_examples_for_prompt, get_framework_principles, TIMEOUTS
 
 
 class QuestionAgent:
@@ -30,15 +28,18 @@ class QuestionAgent:
     automatic local model routing with fallbacks.
     """
     
-    def __init__(self, db_manager=None, usage_tracker=None):
-        """Initialize the question agent."""
+    def __init__(self, db_manager=None, usage_tracker=None, provider='openai'):
+        """Initialize the question agent with provider-specific configuration."""
         self.timeout = TIMEOUTS['question_agent']
         self.analysis_timeout = TIMEOUTS['analysis_agent']
-        self.config = QUESTION_AGENT_CONFIG
+        self.provider = provider
+        self.config = QUESTION_AGENT_CONFIG[provider]  # Provider-specific config
+        self.shared_config = QUESTION_AGENT_CONFIG  # Shared config sections
         self.environment = self._detect_environment()
         self.db_manager = db_manager
+        self.usage_tracker = usage_tracker  # Store usage tracker for API call tracking
         
-        print(f"🧠 Question Agent initialized with {self._get_research_model()} → {self._get_reasoning_model()} ({self.environment} mode)")
+        print(f"🧠 Question Agent initialized with {self._get_research_model()} → {self._get_reasoning_model()} ({self.environment} mode, {provider} provider)")
     
     def _detect_environment(self):
         """Detect if we're in development or production environment."""
@@ -57,37 +58,43 @@ class QuestionAgent:
         return 'production'
     
     def _get_research_model(self):
-        """Get the appropriate research model for web search based on environment."""
+        """Get the appropriate research model for web search based on environment and provider."""
         return self.config['research_model'][self.environment]
     
     def _get_reasoning_model(self):
-        """Get the appropriate reasoning model for analysis based on environment."""
+        """Get the appropriate reasoning model for analysis based on environment and provider."""
         return self.config['reasoning_model'][self.environment]
+    
+    def _get_research_tags(self):
+        """Get LiteLLM router tags for research model."""
+        return self.config['research_model'].get('tags', [])
+    
+    def _get_reasoning_tags(self):
+        """Get LiteLLM router tags for reasoning model."""
+        return self.config['reasoning_model'].get('tags', [])
         
-    def analyze_question(self, question_id, question_data, project_name, general_research, 
-                        deep_research=None, system_prompt=None, benchmark_format='auto'):
+    def analyze(self, project_name, general_research, question_config, db_path, benchmark_format='auto'):
         """
         Analyze a specific diagnostic question with two-step workflow: research then analysis.
         
         Uses project-specific caching to prevent data contamination between different projects.
         
         Args:
-            question_id: ID of the diagnostic question (1-6)
-            question_data: Question configuration from DIAGNOSTIC_QUESTIONS
             project_name: Name of the project being analyzed (for cache isolation)
             general_research: General research context from Agent 1
-            deep_research: Deep research data if available (from Agent 1.5)
-            system_prompt: Framework system prompt
+            question_config: Question configuration from DIAGNOSTIC_QUESTIONS
+            db_path: Path to database for storage
             benchmark_format: Format preference for benchmark data
             
         Returns:
             Dict with analysis, score, confidence, and cost information
         """
         
-        # Get question details
-        question_text = question_data['question']
-        description = question_data['description']
-        search_focus = question_data.get('search_focus', '')
+        # Extract question details from config
+        question_id = question_config['id']
+        question_text = question_config['question']
+        description = question_config['description']
+        search_focus = question_config.get('search_focus', '')
         
         print(f"    Q{question_id}: {question_text}")
         
@@ -95,7 +102,7 @@ class QuestionAgent:
             # Step 1: Research phase - gather information specific to this question
             research_result = self._conduct_question_research(
                 question_id, question_text, description, search_focus, 
-                project_name, general_research, deep_research
+                project_name, general_research
             )
             
             if not research_result['success']:
@@ -135,9 +142,11 @@ class QuestionAgent:
             }
 
     def _conduct_question_research(self, question_id, question_text, description, search_focus, 
-                                 project_name, general_research, deep_research):
+                                 project_name, general_research):
         """
         Step 1: Research phase using web search model to gather question-specific information.
+        For local models: Uses DDGS web search via function calling
+        For OpenAI models: Uses native web search capabilities
         """
         
         # Create project-specific cache key to prevent data contamination
@@ -150,9 +159,190 @@ class QuestionAgent:
             return cached_result
         
         # Build research context
-        research_context = self._build_research_context(general_research, deep_research)
+        research_context = self._build_research_context(general_research)
         
-        # Create research prompt
+        try:
+            print(f"    Q{question_id}: Conducting research with {self._get_research_model()}...")
+            print(f"      🧠 Using {self._get_research_model()} for research")
+            
+            # Check if using local provider for web search function calling
+            if self.provider == 'local':
+                return self._conduct_local_research_with_web_search(
+                    question_id, question_text, description, search_focus,
+                    project_name, research_context, cache_key
+                )
+            else:
+                # OpenAI provider with native web search
+                return self._conduct_openai_research(
+                    question_id, question_text, description, search_focus,
+                    project_name, research_context, cache_key
+                )
+                
+        except Exception as e:
+            error_msg = f"Research failed: {str(e)}"
+            print(f"      ❌ question_research failed: {error_msg[:100]}...")
+            
+            result = {
+                "success": False,
+                "content": f"Research failed for question: {question_text}",
+                "cost": 0.0,
+                "error": error_msg
+            }
+            
+            # Cache failed result to prevent repeated failures
+            self._store_cache(cache_key, result, "question_research")
+            return result
+
+    def _conduct_local_research_with_web_search(self, question_id, question_text, description, 
+                                              search_focus, project_name, research_context, cache_key):
+        """
+        Local model research with DDGS web search via function calling
+        """
+        # Enable function calling for local models (adds functions to prompt)
+        litellm.add_function_to_prompt = True
+        
+        # Create enhanced research prompt for function calling
+        research_prompt = f"""You are researching a potential hackathon partner for NEAR Protocol.
+
+QUESTION FOCUS: {question_text}
+DESCRIPTION: {description}
+SEARCH TARGETS: {search_focus}
+
+EXISTING CONTEXT:
+{research_context[:2000]}
+
+RESEARCH MISSION:
+To answer "{question_text}", you should search for current information about:
+- {search_focus}
+- Technical details, documentation, or examples
+- Partnership history and developer experiences
+- Recent developments or announcements
+
+Use the web_search function to find relevant information, then synthesize your findings to provide comprehensive research that will enable detailed analysis of this question.
+
+Start by searching for key information, then provide a thorough research summary."""
+
+        # Prepare messages and tools for function calling
+        messages = [{"role": "user", "content": research_prompt}]
+        
+        # First completion call with tools
+        if self.usage_tracker:
+            self.usage_tracker.set_context(project_name, "question_agent")
+            response = self.usage_tracker.track_responses_create(
+                model=self._get_research_model(),
+                operation_type="question_research_with_tools",
+                messages=messages,
+                tools=WEB_SEARCH_TOOLS,
+                tool_choice="auto",
+                max_tokens=self.config['research_model']['max_output_tokens'],
+                timeout=self.shared_config['workflow']['research_timeout'],
+                provider=self.provider
+            )
+        else:
+            response = completion(
+                model=self._get_research_model(),
+                messages=messages,
+                tools=WEB_SEARCH_TOOLS,
+                tool_choice="auto",
+                max_tokens=self.config['research_model']['max_output_tokens'],
+                timeout=self.shared_config['workflow']['research_timeout'],
+                provider=self.provider
+            )
+        
+        cost = 0.0
+        if hasattr(response, '_hidden_params'):
+            cost = response._hidden_params.get('response_cost', 0.0)
+        
+        response_message = response.choices[0].message
+        
+        # Check if model wants to call functions
+        if hasattr(response_message, 'tool_calls') and response_message.tool_calls:
+            print(f"      🔍 Model requested {len(response_message.tool_calls)} web search(es)")
+            
+            # Add assistant's response to conversation
+            messages.append(response_message)
+            
+            # Execute function calls
+            for tool_call in response_message.tool_calls:
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+                
+                print(f"      🌐 Searching: {function_args.get('query', 'N/A')}")
+                
+                if function_name in AVAILABLE_FUNCTIONS:
+                    # Execute the function
+                    function_response = AVAILABLE_FUNCTIONS[function_name](**function_args)
+                    
+                    # Add function response to conversation
+                    messages.append({
+                        "tool_call_id": tool_call.id,
+                        "role": "tool", 
+                        "name": function_name,
+                        "content": function_response
+                    })
+            
+            # Second completion call with search results
+            synthesis_prompt = f"""Based on the search results above, provide a comprehensive research summary for the question: "{question_text}"
+
+Focus on:
+- Key findings relevant to {search_focus}
+- Evidence that helps answer "{question_text}"
+- Technical capabilities and partnership potential
+- Developer experience and community feedback
+
+Synthesize the web search results with the existing context to provide thorough research."""
+
+            messages.append({"role": "user", "content": synthesis_prompt})
+            
+            # Final synthesis call
+            if self.usage_tracker:
+                final_response = self.usage_tracker.track_responses_create(
+                    model=self._get_research_model(),
+                    operation_type="question_research_synthesis",
+                    messages=messages,
+                    max_tokens=self.config['research_model']['max_output_tokens'],
+                    timeout=self.shared_config['workflow']['research_timeout'],
+                    provider=self.provider
+                )
+            else:
+                final_response = completion(
+                    model=self._get_research_model(),
+                    messages=messages,
+                    max_tokens=self.config['research_model']['max_output_tokens'],
+                    timeout=self.shared_config['workflow']['research_timeout'],
+                    provider=self.provider
+                )
+            
+            research_content = final_response.choices[0].message.content
+            
+            if hasattr(final_response, '_hidden_params'):
+                cost += final_response._hidden_params.get('response_cost', 0.0)
+                
+        else:
+            # No function calls made, use direct response
+            research_content = response_message.content
+            print(f"      📝 Direct research (no web search requested)")
+        
+        # Reset function calling setting
+        litellm.add_function_to_prompt = False
+        
+        result = {
+            "success": True,
+            "content": research_content,
+            "cost": cost,
+            "web_search_used": hasattr(response_message, 'tool_calls') and bool(response_message.tool_calls)
+        }
+        
+        # Cache the result
+        self._store_cache(cache_key, result, "question_research")
+        return result
+
+    def _conduct_openai_research(self, question_id, question_text, description, 
+                               search_focus, project_name, research_context, cache_key):
+        """
+        OpenAI model research with native web search capabilities
+        """
+        # Create research prompt for OpenAI web search models
         research_prompt = f"""You are researching specific aspects of a potential hackathon partner for NEAR Protocol.
 
 QUESTION FOCUS: {question_text}
@@ -174,46 +364,42 @@ Focus your search on:
 Provide comprehensive information that will enable detailed analysis of this specific question.
 """
 
-        try:
-            print(f"    Q{question_id}: Conducting research with {self._get_research_model()}...")
-            print(f"      🧠 Using {self._get_research_model()} for research")
-            
-            # Use LiteLLM Router for research phase
+        # Standard completion call for OpenAI (native web search)
+        if self.usage_tracker:
+            self.usage_tracker.set_context(project_name, "question_agent")
+            response = self.usage_tracker.track_responses_create(
+                model=self._get_research_model(),
+                operation_type="question_research",
+                messages=[{"role": "user", "content": research_prompt}],
+                max_tokens=self.config['research_model']['max_output_tokens'],
+                timeout=self.shared_config['workflow']['research_timeout'],
+                provider=self.provider
+            )
+        else:
             response = completion(
                 model=self._get_research_model(),
                 messages=[{"role": "user", "content": research_prompt}],
                 max_tokens=self.config['research_model']['max_output_tokens'],
-                timeout=self.config['workflow']['research_timeout']
+                timeout=self.shared_config['workflow']['research_timeout'],
+                provider=self.provider
             )
+        
+        research_content = response.choices[0].message.content
+        cost = 0.0
+        
+        if hasattr(response, '_hidden_params'):
+            cost = response._hidden_params.get('response_cost', 0.0)
             
-            research_content = response.choices[0].message.content
-            cost = 0.0
-            
-            # Extract cost and routing information
-            if hasattr(response, '_hidden_params'):
-                cost = response._hidden_params.get('response_cost', 0.0)
-                
-            result = {
-                "success": True,
-                "content": research_content,
-                "cost": cost
-            }
-            
-            # Cache the result
-            self._store_cache(cache_key, "question_research", result)
-            
-            return result
-            
-        except Exception as e:
-            error_msg = f"Research failed for Q{question_id}: {str(e)}"
-            print(f"    ❌ {error_msg}")
-            
-            return {
-                "success": False,
-                "content": "",
-                "error": error_msg,
-                "cost": 0.0
-            }
+        result = {
+            "success": True,
+            "content": research_content,
+            "cost": cost,
+            "web_search_used": True  # OpenAI models have native web search
+        }
+        
+        # Cache the result
+        self._store_cache(cache_key, result, "question_research")
+        return result
 
     def _conduct_question_analysis(self, question_id, question_text, description, project_name,
                                  general_research, question_research, benchmark_format):
@@ -278,13 +464,25 @@ Focus on hackathon catalyst potential and developer experience. Be specific abou
             print(f"    Q{question_id}: Analyzing with {self._get_reasoning_model()}...")
             print(f"      🧠 Using {self._get_reasoning_model()} for analysis")
             
-            # Use LiteLLM Router for analysis phase
-            response = completion(
-                model=self._get_reasoning_model(),
-                messages=[{"role": "user", "content": analysis_prompt}],
-                max_tokens=self.config['reasoning_model']['max_output_tokens'],
-                timeout=self.config['workflow']['analysis_timeout']
-            )
+            # Use LiteLLM Router for analysis phase with provider-specific routing + usage tracking
+            if self.usage_tracker:
+                self.usage_tracker.set_context(project_name, "question_agent")  
+                response = self.usage_tracker.track_responses_create(
+                    model=self._get_reasoning_model(),
+                    operation_type="question_analysis",
+                    messages=[{"role": "user", "content": analysis_prompt}],
+                    max_tokens=self.config['reasoning_model']['max_output_tokens'],
+                    timeout=self.shared_config['workflow']['analysis_timeout'],
+                    provider=self.provider  # Provider-specific routing
+                )
+            else:
+                response = completion(
+                    model=self._get_reasoning_model(),
+                    messages=[{"role": "user", "content": analysis_prompt}],
+                    max_tokens=self.config['reasoning_model']['max_output_tokens'],
+                    timeout=self.shared_config['workflow']['analysis_timeout'],
+                    provider=self.provider  # Provider-specific routing
+                )
             
             analysis_content = response.choices[0].message.content
             cost = 0.0
@@ -314,7 +512,7 @@ Focus on hackathon catalyst potential and developer experience. Be specific abou
             }
             
             # Cache the result
-            self._store_cache(cache_key, "question_analysis", result)
+            self._store_cache(cache_key, result)
             
             return result
             
@@ -333,7 +531,7 @@ Focus on hackathon catalyst potential and developer experience. Be specific abou
                 "cost": 0.0
             }
 
-    def _build_research_context(self, general_research, deep_research):
+    def _build_research_context(self, general_research):
         """Build context for research phase."""
         context_parts = []
         
@@ -341,14 +539,12 @@ Focus on hackathon catalyst potential and developer experience. Be specific abou
         if general_research:
             context_parts.append(f"GENERAL RESEARCH:\n{general_research}")
         
-        # Add deep research if available (high value context)
-        if deep_research:
-            context_parts.append(f"DEEP RESEARCH:\n{deep_research}")
+        # Note: Deep research integration can be added here if needed in the future
         
         context = "\n\n".join(context_parts)
         
         # Optimize context length for research phase
-        max_context = self.config['context_optimization']['max_research_context']
+        max_context = self.shared_config['context_optimization']['max_research_context']
         if len(context) > max_context:
             context = context[:max_context] + "\n... [context truncated for research optimization]"
         
@@ -369,7 +565,7 @@ Focus on hackathon catalyst potential and developer experience. Be specific abou
         context = "\n\n".join(context_parts)
         
         # Optimize context length for analysis phase
-        max_context = self.config['context_optimization']['max_analysis_context']
+        max_context = self.shared_config['context_optimization']['max_analysis_context']
         if len(context) > max_context:
             context = context[:max_context] + "\n... [context truncated for analysis optimization]"
         
@@ -387,7 +583,7 @@ Focus on hackathon catalyst potential and developer experience. Be specific abou
             return None
             
         try:
-            conn = self.db_manager.get_connection()
+            conn = self.db_manager.get_db_connection()
             cursor = conn.cursor()
             
             # Check if cache table exists
@@ -407,13 +603,13 @@ Focus on hackathon catalyst potential and developer experience. Be specific abou
         except Exception:
             return None
 
-    def _store_cache(self, cache_key, table_name, result_data):
+    def _store_cache(self, cache_key, result_data, table_name="question_analysis"):
         """Store result in project-specific cache."""
         if not self.db_manager:
             return
             
         try:
-            conn = self.db_manager.get_connection()
+            conn = self.db_manager.get_db_connection()
             cursor = conn.cursor()
             
             # Create cache table if it doesn't exist
