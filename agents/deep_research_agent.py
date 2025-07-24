@@ -3,209 +3,305 @@
 Deep Research Agent for NEAR Catalyst Framework
 
 This agent conducts deep, analyst-level research on potential hackathon partners using
-LiteLLM with cost tracking. It builds upon the general research to create comprehensive
-reports at the level of a research analyst.
+LiteLLM Router with automatic local model routing and fallbacks. It builds upon the general 
+research to create comprehensive reports at the level of a research analyst.
 
 Features:
 - Uses o4-mini for cost-effective deep research
 - GPT-4.1 priming to enhance research quality
 - Background mode for long-running analysis
 - Isolated functionality for future model expansion
-- LiteLLM native cost tracking
+- LiteLLM Router with automatic fallbacks
 """
 
 import json
 import time
 from config.config import DEEP_RESEARCH_CONFIG, TIMEOUTS
-from database.usage_tracker import APIUsageTracker
-from database.database_manager import DatabaseManager
+from agents.litellm_router import completion
 
 
 class DeepResearchAgent:
     """
-    Agent that performs deep research analysis using LiteLLM with cost tracking.
+    Agent that performs deep research analysis using LiteLLM Router with automatic fallbacks.
     
     This agent:
-    1. Takes general research from ResearchAgent
-    2. Uses GPT-4.1 to create an enhanced research prompt
-    3. Executes deep research using o4-mini model
-    4. Returns comprehensive analyst-level findings
+    1. Takes general research as input
+    2. Uses GPT-4.1 priming to enhance context
+    3. Conducts detailed analysis with o4-mini
+    4. Returns comprehensive analyst-level research
     """
     
     def __init__(self, client=None, db_manager=None, usage_tracker=None):
-        """Initialize the deep research agent with usage tracking."""
+        """Initialize the deep research agent."""
         self.config = DEEP_RESEARCH_CONFIG
         self.timeout = TIMEOUTS['deep_research_agent']
+        self.db_manager = db_manager
         
-        # Initialize usage tracking
-        self.db_manager = db_manager or DatabaseManager()
-        self.usage_tracker = usage_tracker or APIUsageTracker(None, self.db_manager)
-    
     def is_enabled(self):
         """Check if deep research is enabled in configuration."""
-        return self.config['enabled']
+        return self.config.get('enabled', False)
     
     def get_estimated_cost(self):
-        """Return estimated cost per analysis."""
-        return self.config['cost_per_input']
+        """Get estimated cost per project for deep research."""
+        return self.config.get('cost_per_input', 2.00)
     
-    def create_enhanced_prompt(self, project_name, general_research):
-        """
-        Create an enhanced research prompt using GPT-4.1 priming.
-        
-        Args:
-            project_name (str): Name of the project to research
-            general_research (str): Initial research findings
-            
-        Returns:
-            str: Enhanced research prompt for deep analysis
-        """
-        # Set context for usage tracking
-        self.usage_tracker.set_context(project_name, "deep_research_agent")
-        
-        priming_prompt = f"""You are a senior research analyst creating a deep research prompt for "{project_name}".
-
-Based on this initial research:
-{general_research}
-
-Create a comprehensive research prompt that would guide a deep research analysis to uncover:
-1. Technical architecture and integration capabilities
-2. Developer ecosystem and community engagement
-3. Partnership history and collaboration patterns
-4. Market positioning and competitive advantages
-5. Hackathon readiness and developer support quality
-
-The prompt should be specific, actionable, and designed to produce analyst-level insights about hackathon catalyst potential.
-
-Return only the research prompt, no additional commentary."""
-
-        try:
-            priming_response = self.usage_tracker.track_chat_completions_create(
-                model="gpt-4.1",
-                operation_type="priming",
-                messages=[{"role": "user", "content": priming_prompt}],
-                max_tokens=800,
-                timeout=self.timeout
-            )
-            
-            enhanced_prompt = priming_response.choices[0].message.content.strip()
-            return enhanced_prompt
-            
-        except Exception as e:
-            print(f"      ⚠️ Enhanced prompt creation failed: {e}")
-            # Return fallback prompt
-            return f"Conduct deep research analysis on {project_name} focusing on hackathon catalyst potential, technical capabilities, developer ecosystem, and partnership opportunities."
-    
-    def _get_fallback_prompt(self, project_name, general_research):
-        """Fallback prompt if GPT-4.1 priming fails."""
-        return f"""
-Conduct comprehensive research on "{project_name}" as a potential partnership for NEAR Protocol's hackathon and developer ecosystem.
-
-BACKGROUND CONTEXT:
-{general_research[:2000]}
-
-RESEARCH OBJECTIVES:
-Analyze this project's potential as a hackathon co-creation partner that can create "1+1=3" value for NEAR developers.
-
-ANALYSIS FRAMEWORK:
-Evaluate against six partnership criteria:
-1. Gap-Filler: Does it fill technology gaps NEAR lacks?
-2. New Proof-Points: Does it enable novel use cases with NEAR?
-3. Clear Story: Is there a simple value proposition?
-4. Shared Audience: Same developers, different workflow functions?
-5. Low-Friction Integration: Can developers integrate in hours?
-6. Hands-On Support: Will they provide hackathon mentors/bounties/tooling?
-
-REQUIRED OUTPUT:
-- Comprehensive analysis organized by the six criteria
-- Score each criterion: Positive (+1), Neutral (0), Negative (-1)
-- Include evidence, examples, and source citations
-- Provide overall partnership recommendation
-
-Focus on factual, verifiable information from official sources, documentation, and developer community feedback.
-"""
-    
-    def analyze(self, project_name, general_research):
+    def analyze(self, project_name, general_research_content, context=None):
         """
         Conduct deep research analysis on a project.
         
         Args:
-            project_name (str): Name of the project
-            general_research (str): General research content from ResearchAgent
+            project_name: Name of the project to analyze  
+            general_research_content: Content from general research agent
+            context: Additional context (optional)
             
         Returns:
-            dict: Deep research results with comprehensive analysis
+            Dict with deep research results, sources, and cost information
         """
+        
         if not self.is_enabled():
             return {
-                "content": "Deep research is disabled in configuration",
-                "sources": [],
                 "success": False,
+                "content": "Deep research is disabled",
+                "sources": [],
                 "enabled": False,
-                "estimated_cost": self.get_estimated_cost()
+                "cost": 0.0
             }
         
-        print(f"  🔬 Running deep research analysis (estimated cost: ${self.get_estimated_cost():.2f})...")
+        print(f"      🔬 Conducting deep research on {project_name}...")
+        
+        try:
+            total_cost = 0.0
+            
+            # Step 1: Prime with GPT-4.1 for enhanced context
+            print(f"      📋 Priming analysis with {self.config['priming_model']}...")
+            priming_result = self._prime_analysis(project_name, general_research_content)
+            total_cost += priming_result.get('cost', 0.0)
+            
+            if not priming_result['success']:
+                return priming_result
+            
+            # Step 2: Conduct deep research with o4-mini
+            print(f"      🧠 Deep analysis with {self.config['model']}...")
+            deep_analysis_result = self._conduct_deep_analysis(
+                project_name, 
+                general_research_content, 
+                priming_result['content']
+            )
+            total_cost += deep_analysis_result.get('cost', 0.0)
+            
+            if deep_analysis_result['success']:
+                print(f"      ✅ Deep research completed - Cost: ${total_cost:.4f}")
+                
+                # Combine results
+                return {
+                    "success": True,
+                    "content": deep_analysis_result['content'],
+                    "sources": ["deep_research_analysis"],
+                    "enabled": True,
+                    "priming_cost": priming_result.get('cost', 0.0),
+                    "analysis_cost": deep_analysis_result.get('cost', 0.0),
+                    "total_cost": total_cost,
+                    "elapsed_time": deep_analysis_result.get('elapsed_time', 0),
+                    "enhanced_prompt": True
+                }
+            else:
+                return deep_analysis_result
+                
+        except Exception as e:
+            error_msg = f"Deep research failed: {str(e)}"
+            print(f"      ❌ {error_msg}")
+            
+            return {
+                "success": False,
+                "content": "",
+                "sources": [],
+                "enabled": True,
+                "error": error_msg,
+                "cost": 0.0
+            }
+    
+    def _prime_analysis(self, project_name, general_research):
+        """
+        Prime the analysis using GPT-4.1 to enhance context and focus.
+        
+        Args:
+            project_name: Name of the project
+            general_research: General research content
+            
+        Returns:
+            Dict with priming results and cost
+        """
+        
+        priming_prompt = f"""You are a senior research analyst preparing context for deep analysis of "{project_name}" as a potential NEAR Protocol hackathon catalyst partner.
+
+GENERAL RESEARCH CONTEXT:
+{general_research[:3000]}
+
+Your task is to enhance and structure this research for deep analysis. Focus on:
+
+1. **Key Partnership Signals**: What stands out as most relevant for hackathon collaboration?
+2. **Research Gaps**: What important questions remain unanswered?
+3. **Analysis Focus Areas**: What aspects deserve deeper investigation?
+4. **Developer Impact Potential**: How could this project amplify developer capabilities during hackathons?
+
+Provide a structured enhancement of the research that will guide comprehensive analysis. Be specific about technical capabilities, developer tools, community engagement, and partnership readiness.
+
+Output Format:
+- Executive Summary: 2-3 sentences on partnership potential
+- Key Strengths: Specific technical or community advantages
+- Areas for Investigation: What needs deeper research
+- Hackathon Relevance: How this could benefit time-constrained developers"""
+
+        try:
+            # Use LiteLLM Router for priming
+            response = completion(
+                model=self.config['priming_model'],
+                messages=[{"role": "user", "content": priming_prompt}],
+                temperature=0.1,
+                max_tokens=1500,
+                timeout=300  # 5 minutes for priming
+            )
+            
+            content = response.choices[0].message.content
+            cost = 0.0
+            
+            # Extract cost and routing information
+            if hasattr(response, '_hidden_params'):
+                cost = response._hidden_params.get('response_cost', 0.0)
+                local_used = response._hidden_params.get('local_model_used', False)
+                router_tags = response._hidden_params.get('router_tags', [])
+                
+                if local_used:
+                    print(f"      🆓 Priming with local model ({', '.join(router_tags)}) - Cost: Free")
+                else:
+                    print(f"      💰 Priming with OpenAI model ({', '.join(router_tags)}) - Cost: ${cost:.4f}")
+            
+            return {
+                "success": True,
+                "content": content,
+                "cost": cost
+            }
+            
+        except Exception as e:
+            error_msg = f"Priming failed: {str(e)}"
+            print(f"      ❌ {error_msg}")
+            
+            return {
+                "success": False,
+                "content": "",
+                "error": error_msg,
+                "cost": 0.0
+            }
+    
+    def _conduct_deep_analysis(self, project_name, general_research, priming_content):
+        """
+        Conduct deep analysis using o4-mini with enhanced context.
+        
+        Args:
+            project_name: Name of the project
+            general_research: Original research content
+            priming_content: Enhanced context from priming
+            
+        Returns:
+            Dict with deep analysis results and cost
+        """
+        
+        deep_analysis_prompt = f"""You are a senior partnership analyst conducting comprehensive research for NEAR Protocol's hackathon catalyst program.
+
+PROJECT: {project_name}
+
+ENHANCED CONTEXT FROM RESEARCH:
+{priming_content}
+
+ORIGINAL RESEARCH DATA:
+{general_research[:4000]}
+
+ANALYSIS MISSION:
+Conduct analyst-level evaluation of this project's potential as a hackathon catalyst partner for NEAR Protocol. This analysis will inform strategic partnership decisions.
+
+COMPREHENSIVE ANALYSIS REQUIREMENTS:
+
+1. **TECHNOLOGY ASSESSMENT**
+   - Core technical capabilities and unique value proposition
+   - Integration complexity and developer experience
+   - Compatibility with NEAR's technology stack
+   - Speed of integration during hackathon timeframes
+
+2. **DEVELOPER ECOSYSTEM ANALYSIS**
+   - Target developer audience and overlap with NEAR community
+   - Available tools, SDKs, documentation quality
+   - Learning curve and onboarding experience
+   - Community support and developer resources
+
+3. **PARTNERSHIP READINESS EVALUATION**
+   - Historical hackathon participation and support
+   - Business development and partnership capabilities
+   - Alignment with NEAR's developer-first philosophy
+   - Capacity for hands-on mentorship and support
+
+4. **STRATEGIC VALUE ASSESSMENT**
+   - Unique capabilities that complement NEAR's offerings
+   - Potential for "1 + 1 = 3" value creation
+   - Market positioning and competitive landscape
+   - Long-term strategic alignment potential
+
+5. **IMPLEMENTATION ROADMAP**
+   - Immediate hackathon collaboration opportunities
+   - Technical integration requirements
+   - Partnership structure recommendations
+   - Risk factors and mitigation strategies
+
+6. **QUANTITATIVE METRICS**
+   - Developer adoption metrics and community size
+   - Technical performance and reliability indicators
+   - Partnership track record and success stories
+   - Time-to-value for hackathon participants
+
+Provide a comprehensive, analyst-level report that serves as the definitive assessment of this partnership opportunity. Focus on actionable insights and specific recommendations for NEAR's hackathon catalyst program."""
+
         start_time = time.time()
         
         try:
-            # Step 1: Create enhanced prompt using GPT-4.1
-            print(f"  📝 Creating enhanced research prompt...")
-            enhanced_prompt = self.create_enhanced_prompt(project_name, general_research)
-            
-            # Step 2: Execute deep research
-            print(f"  🌐 Executing deep research (this may take several minutes)...")
-            
-            # Execute deep research using LiteLLM with usage tracking
-            model_name = self.config['model']  # Use configured model directly - no conversion needed
-            print(f"  🔬 Executing deep research with {model_name}...")
-            deep_research_response = self.usage_tracker.track_chat_completions_create(
-                model=model_name,
-                operation_type="deep_research",
-                messages=[{"role": "user", "content": enhanced_prompt}],
-                timeout=self.config['timeout']
+            # Use LiteLLM Router for deep analysis
+            response = completion(
+                model=self.config['model'],
+                messages=[{"role": "user", "content": deep_analysis_prompt}],
+                temperature=0.1,
+                max_tokens=8000,  # Large output for comprehensive analysis
+                timeout=self.timeout
             )
             
-            # Extract response content (LiteLLM returns OpenAI-compatible format)
-            deep_research_content = deep_research_response.choices[0].message.content
-            sources = []  # Web search and tool usage will be handled in future phases
-            tool_calls_made = 0
-            
             elapsed_time = time.time() - start_time
-            print(f"  ✓ Deep research completed in {elapsed_time:.1f} seconds ({tool_calls_made} tool calls)")
+            content = response.choices[0].message.content
+            cost = 0.0
+            
+            # Extract cost and routing information
+            if hasattr(response, '_hidden_params'):
+                cost = response._hidden_params.get('response_cost', 0.0)
+                local_used = response._hidden_params.get('local_model_used', False)
+                router_tags = response._hidden_params.get('router_tags', [])
+                
+                if local_used:
+                    print(f"      🆓 Deep analysis with local model ({', '.join(router_tags)}) - Cost: Free")
+                else:
+                    print(f"      💰 Deep analysis with OpenAI model ({', '.join(router_tags)}) - Cost: ${cost:.4f}")
             
             return {
-                "content": deep_research_content,
-                "sources": sources,
                 "success": True,
-                "enabled": True,
-                "elapsed_time": elapsed_time,
-                "tool_calls_made": tool_calls_made,
-                "estimated_cost": self.get_estimated_cost(),
-                "enhanced_prompt": enhanced_prompt[:500] + "..." if len(enhanced_prompt) > 500 else enhanced_prompt
+                "content": content,
+                "cost": cost,
+                "elapsed_time": elapsed_time
             }
             
         except Exception as e:
             elapsed_time = time.time() - start_time
-            print(f"  ❌ Deep research failed after {elapsed_time:.1f} seconds: {e}")
+            error_msg = f"Deep analysis failed: {str(e)}"
+            print(f"      ❌ {error_msg}")
+            
             return {
-                "content": f"Deep research failed for {project_name}: {str(e)}",
-                "sources": [],
                 "success": False,
-                "enabled": True,
-                "error": str(e),
-                "elapsed_time": elapsed_time,
-                "estimated_cost": self.get_estimated_cost()
-            }
-    
-    def get_config_status(self):
-        """Get current configuration status for debugging."""
-        return {
-            "enabled": self.config['enabled'],
-            "model": self.config['model'],
-            "priming_model": self.config['priming_model'],
-            "estimated_cost_per_analysis": self.config['cost_per_input'],
-            "timeout_seconds": self.config['timeout'],
-            "background_mode": self.config['background_mode'],
-            "max_tool_calls": self.config.get('max_tool_calls', 'unlimited')
-        } 
+                "content": "",
+                "error": error_msg,
+                "cost": 0.0,
+                "elapsed_time": elapsed_time
+            } 

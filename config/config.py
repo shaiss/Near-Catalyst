@@ -223,6 +223,7 @@ LMSTUDIO_CONFIG = {
     'use_sdk': os.getenv('USE_LMSTUDIO_SDK', 'true').lower() == 'true',
     'auto_load_models': True,  # Automatically load models when needed (local only)
     'model_load_timeout': 300,  # 5 minutes for model loading
+    'local_models_path': os.getenv('LOCAL_MODELS_PATH'),  # Path to pre-downloaded models
     'default_generation_config': {
         'temperature': 0.1,
         'max_tokens': 2048,

@@ -8,210 +8,222 @@ determining which partners can unlock developer potential and create exponential
 
 import json
 from config.config import DIAGNOSTIC_QUESTIONS, TIMEOUTS, SCORE_THRESHOLDS, RECOMMENDATIONS, load_partnership_benchmarks
-from database.usage_tracker import APIUsageTracker
-from database.database_manager import DatabaseManager
 from typing import List, Dict
+from agents.litellm_router import completion
 
 
 class SummaryAgent:
     """
     Agent 8: Summary agent that synthesizes all question analyses into final recommendation
-    with cost tracking via LiteLLM.
+    using LiteLLM Router with automatic local model routing and fallbacks.
     """
     
     def __init__(self, client=None, db_manager=None, usage_tracker=None):
-        """Initialize the summary agent with usage tracking."""
+        """Initialize the summary agent."""
         self.timeout = TIMEOUTS['summary_agent']
-        
-        # Initialize usage tracking
-        self.db_manager = db_manager or DatabaseManager()
-        self.usage_tracker = usage_tracker or APIUsageTracker(None, self.db_manager)
-    
-    def analyze(self, project_name: str, general_research: str, question_analyses: List[Dict], system_prompt: str, benchmark_format: str = 'auto') -> Dict:
-        """
-        Analyze and synthesize all results into final recommendation.
-        
-        This method provides a consistent interface with other agents.
-        
-        Args:
-            project_name: Name of the project being evaluated
-            general_research: Research findings from research agent (may be deep research if available)
-            question_analyses: List of question analysis results
-            system_prompt: System prompt (not used in this agent but kept for consistency)
-            benchmark_format: Format preference for benchmark data
-            
-        Returns:
-            Dictionary containing final catalyst assessment and recommendation
-        """
-        return self.generate_final_summary(project_name, general_research, question_analyses, benchmark_format)
-    
-    def generate_final_summary(self, project_name: str, general_research: str, question_analyses: List[Dict], benchmark_format: str = 'auto') -> Dict:
+        self.db_manager = db_manager
+
+    def synthesize(self, project_name: str, general_research: str, question_analyses: List[Dict], 
+                  benchmark_format: str = 'auto') -> Dict:
         """
         Synthesize all analysis results into a final hackathon catalyst recommendation.
         
         Args:
-            project_name: Name of the project being evaluated
-            general_research: General research data or deep research if available
-            question_analyses: List of individual question analysis results
-            benchmark_format: Format preference for benchmark examples
-            
-        Returns:
-            Dictionary containing synthesis results with scoring and recommendation
-        """
-        # Set context for usage tracking
-        self.usage_tracker.set_context(project_name, "summary_agent")
+            project_name: Name of the project being analyzed
+            general_research: Research content from Agent 1
+            question_analyses: List of question analysis results from Agents 2-7
+            benchmark_format: Format preference for benchmark examples ('auto', 'json', 'csv')
         
+        Returns:
+            Dict with final recommendation, scoring breakdown, and cost information
+        """
+        
+        # Load partnership benchmarks for context
+        benchmarks = load_partnership_benchmarks(benchmark_format)
+        
+        # Build analysis summary for prompt
+        analysis_summary = self._build_analysis_summary(general_research, question_analyses)
+        
+        # Build scoring summary
+        scoring_summary = self._build_scoring_summary(question_analyses)
+        
+        # Build benchmark examples for context
+        benchmark_examples = self._format_benchmark_examples(benchmarks)
+        
+        # Create synthesis prompt
+        synthesis_prompt = f"""You are the NEAR Protocol Partnership Scout's final decision engine. Your role is to synthesize all research and analysis into a definitive hackathon catalyst recommendation.
+
+PROJECT: {project_name}
+
+COMPLETE ANALYSIS SUMMARY:
+{analysis_summary}
+
+SCORING BREAKDOWN:
+{scoring_summary}
+
+BENCHMARK EXAMPLES FOR CALIBRATION:
+{benchmark_examples}
+
+SYNTHESIS INSTRUCTIONS:
+
+1. **Calculate Total Score**: Sum all individual question scores for final score
+2. **Apply Framework Thresholds**: 
+   - Score ≥ 4: "Strong candidate; explore MoU/co-marketing"
+   - Score 0-3: "Mixed; negotiate scope"
+   - Score < 0: "Decline or redesign the collaboration"
+
+3. **Generate Structured Recommendation**:
+   - Lead with clear numerical score (X/6)
+   - State threshold-based recommendation
+   - Summarize key strengths and concerns
+   - Provide specific next steps
+
+4. **Format as Partnership Brief**:
+   Present your analysis in this exact structure:
+
+   PARTNERSHIP ASSESSMENT: {project_name}
+   
+   FINAL SCORE: [X]/6
+   RECOMMENDATION: [Threshold-based recommendation]
+   
+   KEY FINDINGS:
+   • [Most compelling partnership strength]
+   • [Primary concern or limitation]
+   • [Integration/collaboration feasibility]
+   
+   NEXT STEPS:
+   • [Specific actionable recommendation]
+   • [Risk mitigation if needed]
+   
+   HACKATHON CATALYST POTENTIAL: [High/Medium/Low] - [Brief justification]
+
+Synthesize with authority and precision. This recommendation will drive partnership decisions."""
+
         try:
-            # Load benchmarks in the specified format
-            benchmarks = load_partnership_benchmarks(benchmark_format)
+            print(f"  📊 Generating final summary with LiteLLM Router...")
+            
+            # Use LiteLLM Router for automatic local model routing and fallbacks
+            response = completion(
+                model="gpt-4.1",
+                messages=[{"role": "user", "content": synthesis_prompt}],
+                temperature=0.1,
+                max_tokens=2000,
+                timeout=self.timeout
+            )
+            
+            content = response.choices[0].message.content
+            cost = 0.0
+            
+            # Extract cost and routing information from Router
+            if hasattr(response, '_hidden_params'):
+                cost = response._hidden_params.get('response_cost', 0.0)
+                cost_source = response._hidden_params.get('cost_source', 'openai')
+                local_used = response._hidden_params.get('local_model_used', False)
+                router_tags = response._hidden_params.get('router_tags', [])
+                
+                if local_used:
+                    print(f"  🆓 Using local model ({', '.join(router_tags)}) - Cost: Free")
+                else:
+                    print(f"  💰 Using OpenAI model ({', '.join(router_tags)}) - Cost: ${cost:.4f}")
             
             # Calculate total score from question analyses
-            total_score = sum(q.get('score', 0) for q in question_analyses)
+            total_score = sum([q.get('score', 0) for q in question_analyses])
             
-            # Determine recommendation based on scoring framework
+            # Determine recommendation based on thresholds
             recommendation = self._determine_recommendation(total_score)
             
-            # Create synthesis prompt
-            synthesis_prompt = self._create_synthesis_prompt(
-                project_name, general_research, question_analyses, 
-                total_score, recommendation, benchmarks
-            )
-            
-            # Get LLM synthesis using GPT-4.1 with usage tracking
-            print(f"  📊 Generating final summary with GPT-4.1...")
-            response = self.usage_tracker.track_chat_completions_create(
-                model="gpt-4.1",
-                operation_type="synthesis",
-                messages=[
-                    {"role": "system", "content": "You are a NEAR Partnership Analysis expert synthesizing hackathon catalyst evaluations."},
-                    {"role": "user", "content": synthesis_prompt}
-                ],
-                max_tokens=800,
-                timeout=TIMEOUTS['summary_agent']
-            )
-            
-            summary_text = response.choices[0].message.content.strip()
-            
-            # Validate summary quality
-            if len(summary_text) < 50:
-                print(f"  ⚠️  WARNING: Generated summary is very short ({len(summary_text)} chars)")
-            
-            print(f"  ✅ Final summary generated: {total_score}/6 score, {recommendation}")
-            
             return {
-                "project_name": project_name,
+                "success": True,
+                "content": content,
                 "total_score": total_score,
                 "recommendation": recommendation,
-                "summary": summary_text,
-                "question_scores": {f"Q{q.get('question_id', i+1)}": q.get('score', 0) for i, q in enumerate(question_analyses)},
-                "success": True
+                "cost": cost
             }
             
         except Exception as e:
-            print(f"      ❌ Summary generation failed: {str(e)}")
-            
-            # Calculate fallback score from available data
-            fallback_score = sum(q.get('score', 0) for q in question_analyses)
-            fallback_recommendation = self._determine_recommendation(fallback_score)
+            error_msg = f"Summary agent error: {str(e)}"
+            print(f"❌ {error_msg}")
             
             return {
-                "project_name": project_name,
-                "total_score": fallback_score,
-                "recommendation": fallback_recommendation,
-                "summary": f"Summary generation failed: {str(e)}. Score based on individual analyses: {fallback_score}/6",
-                "question_scores": {f"Q{q.get('question_id', i+1)}": q.get('score', 0) for i, q in enumerate(question_analyses)},
                 "success": False,
-                "error": str(e)
+                "content": "",
+                "total_score": 0,
+                "recommendation": "Error in analysis",
+                "error": error_msg,
+                "cost": 0.0
             }
-    
-    def _determine_recommendation(self, total_score):
-        """Generate recommendation based on score thresholds."""
+
+    def _build_analysis_summary(self, general_research: str, question_analyses: List[Dict]) -> str:
+        """Build comprehensive analysis summary from all agents."""
+        
+        summary_parts = []
+        
+        # Add general research context
+        if general_research:
+            summary_parts.append(f"GENERAL RESEARCH:\n{general_research[:1000]}{'...' if len(general_research) > 1000 else ''}")
+        
+        # Add question-specific analyses
+        summary_parts.append("\nQUESTION-SPECIFIC ANALYSES:")
+        
+        for q_analysis in question_analyses:
+            question_text = q_analysis.get('question', 'Unknown Question')
+            score = q_analysis.get('score', 0)
+            confidence = q_analysis.get('confidence', 'Unknown')
+            analysis_content = q_analysis.get('analysis', 'No analysis available')
+            
+            # Truncate long analyses
+            truncated_analysis = analysis_content[:300] + '...' if len(analysis_content) > 300 else analysis_content
+            
+            summary_parts.append(f"\n{question_text}: {score:+d} ({confidence})")
+            summary_parts.append(f"Analysis: {truncated_analysis}")
+        
+        return "\n".join(summary_parts)
+
+    def _build_scoring_summary(self, question_analyses: List[Dict]) -> str:
+        """Build scoring breakdown summary."""
+        
+        scores = []
+        total = 0
+        
+        for q_analysis in question_analyses:
+            question = q_analysis.get('question', 'Unknown')
+            score = q_analysis.get('score', 0)
+            confidence = q_analysis.get('confidence', 'Unknown')
+            
+            scores.append(f"{question}: {score:+d} ({confidence})")
+            total += score
+        
+        scores.append(f"\nTOTAL SCORE: {total:+d}/6")
+        
+        return "\n".join(scores)
+
+    def _format_benchmark_examples(self, benchmarks: Dict) -> str:
+        """Format benchmark examples for prompt context."""
+        
+        examples = []
+        
+        # Add complementary examples
+        for example in benchmarks.get("framework_benchmarks", {}).get("complementary_examples", []):
+            partner = example.get('partner', 'Unknown')
+            score = example.get('score', 0)
+            description = example.get('description', '')
+            examples.append(f"{partner}: {score:+d} ({description})")
+        
+        # Add competitive examples
+        for example in benchmarks.get("framework_benchmarks", {}).get("competitive_examples", []):
+            partner = example.get('partner', 'Unknown')
+            score = example.get('score', 0)
+            description = example.get('description', '')
+            examples.append(f"{partner}: {score:+d} ({description})")
+        
+        return "\n".join(examples)
+
+    def _determine_recommendation(self, total_score: int) -> str:
+        """Determine recommendation based on score thresholds."""
+        
         if total_score >= SCORE_THRESHOLDS['strong_candidate']:
             return RECOMMENDATIONS['strong_candidate']
         elif total_score >= SCORE_THRESHOLDS['mixed_fit']:
             return RECOMMENDATIONS['mixed_fit']
         else:
-            return RECOMMENDATIONS['decline']
-    
-    def _create_synthesis_prompt(self, project_name, general_research, question_analyses, total_score, recommendation, benchmarks):
-        """Create a comprehensive synthesis prompt for the LLM."""
-        
-        # Check if this appears to be deep research data
-        research_type = "deep research" if len(general_research) > 5000 else "general research"
-        
-        # Build question summaries
-        question_summaries = []
-        for q in question_analyses:
-            q_id = q.get('question_id', '?')
-            score = q.get('score', 0)
-            confidence = q.get('confidence', 'Unknown')
-            analysis = q.get('analysis', 'No analysis available')
-            
-            # Get question text from config
-            question_text = "Unknown question"
-            for diag_q in DIAGNOSTIC_QUESTIONS:
-                if diag_q['id'] == q_id:
-                    question_text = diag_q['question']
-                    break
-            
-            question_summaries.append(f"""
-**Q{q_id}: {question_text}**
-Score: {score:+d} | Confidence: {confidence}
-Analysis: {analysis[:200]}{'...' if len(analysis) > 200 else ''}
-""")
-        
-        # Create the synthesis prompt
-        synthesis_prompt = f"""
-Synthesize a comprehensive hackathon catalyst evaluation for {project_name}.
-
-**PROJECT CONTEXT (from {research_type}):**
-{general_research[:1500]}
-
-**DETAILED QUESTION ANALYSIS:**
-{''.join(question_summaries)}
-
-**OVERALL SCORING:**
-Total Score: {total_score}/6
-Recommendation: {recommendation}
-
-**FRAMEWORK BENCHMARKS:**
-{self._format_benchmarks_for_prompt(benchmarks)}
-
-**SYNTHESIS REQUIREMENTS:**
-Create a comprehensive summary that:
-
-1. **Executive Summary**: One paragraph overview of {project_name}'s hackathon catalyst potential
-2. **Strengths & Opportunities**: Key areas where this partnership could unlock developer potential
-3. **Challenges & Risks**: Potential friction points or integration challenges
-4. **Recommendation Rationale**: Why this score/recommendation makes sense
-5. **Next Steps**: Specific actions if pursuing this partnership
-
-**OUTPUT FORMAT:**
-Structure your response as a professional partnership evaluation report. Focus on:
-- Hackathon-specific value proposition
-- Developer experience and integration complexity
-- Partnership readiness and support capabilities
-- Risk assessment and mitigation strategies
-
-Keep the tone analytical but accessible, suitable for both technical and business stakeholders.
-"""
-        
-        return synthesis_prompt
-    
-    def _format_benchmarks_for_prompt(self, benchmarks):
-        """Format benchmark examples for the synthesis prompt."""
-        try:
-            examples = []
-            
-            # Add complementary examples
-            for example in benchmarks.get("framework_benchmarks", {}).get("complementary_examples", []):
-                examples.append(f"✅ {example['partner']} ({example['score']:+d}): {example['description']}")
-            
-            # Add competitive examples  
-            for example in benchmarks.get("framework_benchmarks", {}).get("competitive_examples", []):
-                examples.append(f"❌ {example['partner']} ({example['score']:+d}): {example['description']}")
-            
-            return "\n".join(examples) if examples else "No benchmark examples available"
-            
-        except Exception:
-            return "Benchmark formatting failed" 
+            return RECOMMENDATIONS['decline'] 
