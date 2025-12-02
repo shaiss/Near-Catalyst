@@ -2,8 +2,9 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![OpenAI API](https://img.shields.io/badge/OpenAI-GPT--4o%20%7C%20o4--mini-green.svg)](https://openai.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![NEAR Protocol](https://img.shields.io/badge/NEAR-Protocol-00D4FF.svg)](https://near.org)
+[![Web3](https://img.shields.io/badge/Web3-3.0-black.svg)](https://web3.foundation/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > 🚀 **AI-powered system for discovering hackathon co-creation partners that create "1 + 1 = 3" value propositions and unlock developer potential during NEAR hackathons and developer events.**
 
